@@ -1,6 +1,19 @@
+/*
+ * Copyright 2014 Google Inc.
+ *
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file.
+ */
+
 #include "sk_tool_utils.h"
+#include "../src/fonts/SkTestScalerContext.h"
+
+#include "SkBitmap.h"
+#include "SkCanvas.h"
 
 namespace sk_tool_utils {
+
+bool gEnablePortableTypeface = false;
 
 const char* colortype_name(SkColorType ct) {
     switch (ct) {
@@ -17,6 +30,14 @@ const char* colortype_name(SkColorType ct) {
     }
 }
 
+SkPaint::FontMetrics create_font(SkTDArray<SkPath*>& , SkTDArray<SkFixed>& );
+
+void set_portable_typeface(SkPaint* paint, SkTypeface::Style style) {
+    if (gEnablePortableTypeface) {
+        SkSafeUnref(paint->setTypeface(CreateTestTypeface(create_font, style)));
+    }
+}
+
 void write_pixels(SkCanvas* canvas, const SkBitmap& bitmap, int x, int y,
                   SkColorType colorType, SkAlphaType alphaType) {
     SkBitmap tmp(bitmap);
@@ -29,4 +50,4 @@ void write_pixels(SkCanvas* canvas, const SkBitmap& bitmap, int x, int y,
     canvas->writePixels(info, tmp.getPixels(), tmp.rowBytes(), x, y);
 }
 
-}
+}  // namespace sk_tool_utils

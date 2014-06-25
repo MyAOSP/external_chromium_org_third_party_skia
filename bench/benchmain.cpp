@@ -6,7 +6,6 @@
  */
 
 #include "BenchLogger.h"
-#include "BenchTimer.h"
 #include "Benchmark.h"
 #include "CrashHandler.h"
 #include "GMBench.h"
@@ -24,6 +23,7 @@
 #include "SkPictureRecorder.h"
 #include "SkString.h"
 #include "SkSurface.h"
+#include "Timer.h"
 
 #if SK_SUPPORT_GPU
 #include "GrContext.h"
@@ -249,7 +249,7 @@ DEFINE_string(config, kDefaultsConfigStr,
               "Run configs given.  By default, runs the configs marked \"runByDefault\" in gConfigs.");
 DEFINE_string(logFile, "", "Also write stdout here.");
 DEFINE_int32(minMs, 20,  "Shortest time we'll allow a benchmark to run.");
-DEFINE_int32(maxMs, 4000, "Longest time we'll allow a benchmark to run.");
+DEFINE_int32(maxMs, 1000, "Longest time we'll allow a benchmark to run.");
 DEFINE_bool(runOnce, kIsDebug, "Run each bench exactly once and don't report timings.");
 DEFINE_double(error, 0.01,
               "Ratio of subsequent bench measurements must drop within 1±error to converge.");
@@ -530,9 +530,9 @@ int tool_main(int argc, char** argv) {
             if (Benchmark::kGPU_Backend == config.backend) {
                 contextHelper = gContextFactory.getGLContext(config.contextType);
             }
-            BenchTimer timer(contextHelper);
+            Timer timer(contextHelper);
 #else
-            BenchTimer timer;
+            Timer timer;
 #endif
 
             double previous = std::numeric_limits<double>::infinity();

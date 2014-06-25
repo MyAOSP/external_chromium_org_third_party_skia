@@ -1117,9 +1117,6 @@ private:
 
     static bool TooBigToUseCache(const SkMatrix& ctm, const SkMatrix& textM);
 
-    bool tooBigToUseCache() const;
-    bool tooBigToUseCache(const SkMatrix& ctm) const;
-
     // Set flags/hinting/textSize up to use for drawing text as paths.
     // Returns scale factor to restore the original textSize, since will will
     // have change it to kCanonicalTextSizeForPaths.
@@ -1139,6 +1136,7 @@ private:
     friend class SkPDFDevice;
     friend class GrBitmapTextContext;
     friend class GrDistanceFieldTextContext;
+    friend class GrStencilAndCoverTextContext;
     friend class SkTextToPathIter;
     friend class SkCanonicalizePaint;
 

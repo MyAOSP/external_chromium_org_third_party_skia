@@ -167,11 +167,6 @@ void SkGpuDevice::initFromRenderTarget(GrContext* context,
     fContext = context;
     fContext->ref();
 
-    bool useDFFonts = !!(flags & kDFFonts_Flag);
-    fMainTextContext = SkNEW_ARGS(GrDistanceFieldTextContext, (fContext, fLeakyProperties,
-                                                               useDFFonts));
-    fFallbackTextContext = SkNEW_ARGS(GrBitmapTextContext, (fContext, fLeakyProperties));
-
     fRenderTarget = NULL;
     fNeedClear = flags & kNeedClear_Flag;
 
@@ -192,6 +187,10 @@ void SkGpuDevice::initFromRenderTarget(GrContext* context,
                                 (surface->info(), surface, SkToBool(flags & kCached_Flag)));
 
     this->setPixelRef(pr)->unref();
+
+    bool useDFFonts = !!(flags & kDFFonts_Flag);
+    fMainTextContext = fContext->createTextContext(fRenderTarget, fLeakyProperties, useDFFonts);
+    fFallbackTextContext = SkNEW_ARGS(GrBitmapTextContext, (fContext, fLeakyProperties));
 }
 
 SkGpuDevice* SkGpuDevice::Create(GrContext* context, const SkImageInfo& origInfo,
@@ -474,7 +473,7 @@ void SkGpuDevice::drawRect(const SkDraw& draw, const SkRect& rect,
 
     GrPaint grPaint;
     SkPaint2GrPaintShader(this->context(), paint, true, &grPaint);
-  
+
     fContext->drawRect(grPaint, rect, &strokeInfo);
 }
 
@@ -487,7 +486,7 @@ void SkGpuDevice::drawRRect(const SkDraw& draw, const SkRRect& rect,
 
     GrPaint grPaint;
     SkPaint2GrPaintShader(this->context(), paint, true, &grPaint);
-    
+
     GrStrokeInfo strokeInfo(paint);
     if (paint.getMaskFilter()) {
         // try to hit the fast path for drawing filtered round rects
@@ -536,7 +535,7 @@ void SkGpuDevice::drawRRect(const SkDraw& draw, const SkRRect& rect,
         this->drawPath(draw, path, paint, NULL, true);
         return;
     }
-    
+
     fContext->drawRRect(grPaint, rect, strokeInfo);
 }
 
@@ -1843,6 +1842,10 @@ void SkGpuDevice::EXPERIMENTAL_purge(const SkPicture* picture) {
 
 bool SkGpuDevice::EXPERIMENTAL_drawPicture(SkCanvas* canvas, const SkPicture* picture) {
 
+    if (NULL == picture->fPlayback.get()) {
+        return false;
+    }
+
     SkPicture::AccelData::Key key = GPUAccelData::ComputeAccelDataKey();
 
     const SkPicture::AccelData* data = picture->EXPERIMENTAL_getAccelData(key);
@@ -1939,60 +1942,50 @@ bool SkGpuDevice::EXPERIMENTAL_drawPicture(SkCanvas* canvas, const SkPicture* pi
 
     SkPicturePlayback::PlaybackReplacements replacements;
 
+    // Generate the layer and/or ensure it is locked
     for (int i = 0; i < gpuData->numSaveLayers(); ++i) {
         if (pullForward[i]) {
             GrCachedLayer* layer = fContext->getLayerCache()->findLayerOrCreate(picture, i);
 
             const GPUAccelData::SaveLayerInfo& info = gpuData->saveLayerInfo(i);
 
-            if (NULL != picture->fPlayback) {
-                SkPicturePlayback::PlaybackReplacements::ReplacementInfo* layerInfo =
+            SkPicturePlayback::PlaybackReplacements::ReplacementInfo* layerInfo =
                                                                         replacements.push();
-                layerInfo->fStart = info.fSaveLayerOpID;
-                layerInfo->fStop = info.fRestoreOpID;
-                layerInfo->fPos = info.fOffset;
+            layerInfo->fStart = info.fSaveLayerOpID;
+            layerInfo->fStop = info.fRestoreOpID;
+            layerInfo->fPos = info.fOffset;
 
-                GrTextureDesc desc;
-                desc.fFlags = kRenderTarget_GrTextureFlagBit;
-                desc.fWidth = info.fSize.fWidth;
-                desc.fHeight = info.fSize.fHeight;
-                desc.fConfig = kSkia8888_GrPixelConfig;
-                // TODO: need to deal with sample count
+            GrTextureDesc desc;
+            desc.fFlags = kRenderTarget_GrTextureFlagBit;
+            desc.fWidth = info.fSize.fWidth;
+            desc.fHeight = info.fSize.fHeight;
+            desc.fConfig = kSkia8888_GrPixelConfig;
+            // TODO: need to deal with sample count
 
-                bool bNeedsRendering = true;
+            bool needsRendering = !fContext->getLayerCache()->lock(layer, desc);
+            if (NULL == layer->getTexture()) {
+                continue;
+            }
 
-                // This just uses scratch textures and doesn't cache the texture.
-                // This can yield a lot of re-rendering
-                if (NULL == layer->getTexture()) {
-                    layer->setTexture(fContext->lockAndRefScratchTexture(desc,
-                                                        GrContext::kApprox_ScratchTexMatch));
-                    if (NULL == layer->getTexture()) {
-                        continue;
-                    }
-                } else {
-                    bNeedsRendering = false;
-                }
+            layerInfo->fBM = SkNEW(SkBitmap);  // fBM is allocated so ReplacementInfo can be POD
+            wrap_texture(layer->getTexture(), desc.fWidth, desc.fHeight, layerInfo->fBM);
 
-                layerInfo->fBM = SkNEW(SkBitmap);
-                wrap_texture(layer->getTexture(), desc.fWidth, desc.fHeight, layerInfo->fBM);
+            SkASSERT(info.fPaint);
+            layerInfo->fPaint = info.fPaint;
 
-                SkASSERT(info.fPaint);
-                layerInfo->fPaint = info.fPaint;
+            if (needsRendering) {
+                SkAutoTUnref<SkSurface> surface(SkSurface::NewRenderTargetDirect(
+                                                    layer->getTexture()->asRenderTarget()));
 
-                if (bNeedsRendering) {
-                    SkAutoTUnref<SkSurface> surface(SkSurface::NewRenderTargetDirect(
-                                                        layer->getTexture()->asRenderTarget()));
+                SkCanvas* canvas = surface->getCanvas();
 
-                    SkCanvas* canvas = surface->getCanvas();
+                canvas->setMatrix(info.fCTM);
+                canvas->clear(SK_ColorTRANSPARENT);
 
-                    canvas->setMatrix(info.fCTM);
-                    canvas->clear(SK_ColorTRANSPARENT);
-
-                    picture->fPlayback->setDrawLimits(info.fSaveLayerOpID, info.fRestoreOpID);
-                    picture->fPlayback->draw(*canvas, NULL);
-                    picture->fPlayback->setDrawLimits(0, 0);
-                    canvas->flush();
-                }
+                picture->fPlayback->setDrawLimits(info.fSaveLayerOpID, info.fRestoreOpID);
+                picture->fPlayback->draw(*canvas, NULL);
+                picture->fPlayback->setDrawLimits(0, 0);
+                canvas->flush();
             }
         }
     }
@@ -2002,13 +1995,10 @@ bool SkGpuDevice::EXPERIMENTAL_drawPicture(SkCanvas* canvas, const SkPicture* pi
     picture->fPlayback->draw(*canvas, NULL);
     picture->fPlayback->setReplacements(NULL);
 
+    // unlock the layers
     for (int i = 0; i < gpuData->numSaveLayers(); ++i) {
-        GrCachedLayer* layer = fContext->getLayerCache()->findLayerOrCreate(picture, i);
-
-        if (NULL != layer->getTexture()) {
-            fContext->unlockScratchTexture(layer->getTexture());
-            layer->setTexture(NULL);
-        }
+        GrCachedLayer* layer = fContext->getLayerCache()->findLayer(picture, i);
+        fContext->getLayerCache()->unlock(layer);
     }
 
     return true;

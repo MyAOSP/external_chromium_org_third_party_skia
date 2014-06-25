@@ -11,6 +11,7 @@
 #define SkPicture_DEFINED
 
 #include "SkBitmap.h"
+#include "SkDrawPictureCallback.h"
 #include "SkImageDecoder.h"
 #include "SkRefCnt.h"
 
@@ -21,7 +22,6 @@ class GrContext;
 class SkBBHFactory;
 class SkBBoxHierarchy;
 class SkCanvas;
-class SkDrawPictureCallback;
 class SkData;
 class SkPicturePlayback;
 class SkPictureRecord;
@@ -29,6 +29,8 @@ class SkStream;
 class SkWStream;
 
 struct SkPictInfo;
+
+class SkRecord;
 
 /** \class SkPicture
 
@@ -67,16 +69,10 @@ public:
     SkPicture(const SkPicture& src);
 
     /**  PRIVATE / EXPERIMENTAL -- do not call */
-    void EXPERIMENTAL_addAccelData(const AccelData* data) const {
-        SkRefCnt_SafeAssign(fAccelData, data);
-    }
+    void EXPERIMENTAL_addAccelData(const AccelData*) const;
+
     /**  PRIVATE / EXPERIMENTAL -- do not call */
-    const AccelData* EXPERIMENTAL_getAccelData(AccelData::Key key) const {
-        if (NULL != fAccelData && fAccelData->getKey() == key) {
-            return fAccelData;
-        }
-        return NULL;
-    }
+    const AccelData* EXPERIMENTAL_getAccelData(AccelData::Key) const;
 
     /**
      *  Function signature defining a function that sets up an SkBitmap from encoded data. On
@@ -113,11 +109,6 @@ public:
     static SkPicture* CreateFromBuffer(SkReadBuffer&);
 
     virtual ~SkPicture();
-
-    /**
-     *  Swap the contents of the two pictures. Guaranteed to succeed.
-     */
-    void swap(SkPicture& other);
 
     /**
      *  Creates a thread-safe clone of the picture that is ready for playback.
@@ -255,12 +246,12 @@ protected:
 
     mutable uint32_t      fUniqueID;
 
-    // fPlayback, fRecord, fWidth & fHeight are protected to allow derived classes to
+    // fPlayback, fWidth & fHeight are protected to allow derived classes to
     // install their own SkPicturePlayback-derived players,SkPictureRecord-derived
     // recorders and set the picture size
-    SkPicturePlayback*    fPlayback;
+    SkAutoTDelete<SkPicturePlayback> fPlayback;
     int                   fWidth, fHeight;
-    mutable const AccelData* fAccelData;
+    mutable SkAutoTUnref<const AccelData> fAccelData;
 
     void needsNewGenID() { fUniqueID = SK_InvalidGenID; }
 
@@ -318,24 +309,9 @@ private:
     friend class SkDebugCanvas;
 
     typedef SkRefCnt INHERITED;
-};
 
-/**
- *  Subclasses of this can be passed to canvas.drawPicture. During the drawing
- *  of the picture, this callback will periodically be invoked. If its
- *  abortDrawing() returns true, then picture playback will be interrupted.
- *
- *  The resulting drawing is undefined, as there is no guarantee how often the
- *  callback will be invoked. If the abort happens inside some level of nested
- *  calls to save(), restore will automatically be called to return the state
- *  to the same level it was before the drawPicture call was made.
- */
-class SK_API SkDrawPictureCallback {
-public:
-    SkDrawPictureCallback() {}
-    virtual ~SkDrawPictureCallback() {}
-
-    virtual bool abortDrawing() = 0;
+    SkPicture(int width, int height, SkRecord*);  // Takes ownership.
+    SkAutoTDelete<SkRecord> fRecord;
 };
 
 #endif

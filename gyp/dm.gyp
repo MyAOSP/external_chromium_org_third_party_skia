@@ -36,7 +36,6 @@
             '../dm/DMPDFTask.cpp',
             '../dm/DMPipeTask.cpp',
             '../dm/DMQuiltTask.cpp',
-            '../dm/DMRecordTask.cpp',
             '../dm/DMReplayTask.cpp',
             '../dm/DMReporter.cpp',
             '../dm/DMSKPTask.cpp',
@@ -55,12 +54,13 @@
             '../src/utils/debugger/SkObjectParser.cpp',
         ],
         'dependencies': [
-            'crash_handler.gyp:CrashHandler',
             'etc1.gyp:libetc1',
             'flags.gyp:flags',
             'gputest.gyp:skgputest',
             'jsoncpp.gyp:jsoncpp',
             'skia_lib.gyp:skia_lib',
+            'tools.gyp:crash_handler',
+            'tools.gyp:sk_tool_utils',
         ],
         'conditions': [
           ['skia_android_framework', {

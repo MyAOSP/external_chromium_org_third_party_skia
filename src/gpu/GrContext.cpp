@@ -16,6 +16,7 @@
 #include "GrAARectRenderer.h"
 #include "GrBufferAllocPool.h"
 #include "GrGpu.h"
+#include "GrDistanceFieldTextContext.h"
 #include "GrDrawTargetCaps.h"
 #include "GrIndexBuffer.h"
 #include "GrInOrderDrawBuffer.h"
@@ -26,6 +27,7 @@
 #include "GrResourceCache.h"
 #include "GrSoftwarePathRenderer.h"
 #include "GrStencilBuffer.h"
+#include "GrStencilAndCoverTextContext.h"
 #include "GrStrokeInfo.h"
 #include "GrTextStrike.h"
 #include "GrTraceMarker.h"
@@ -128,7 +130,7 @@ bool GrContext::init(GrBackend backend, GrBackendContext backendContext) {
 
     fFontCache = SkNEW_ARGS(GrFontCache, (fGpu));
 
-    fLayerCache.reset(SkNEW_ARGS(GrLayerCache, (fGpu)));
+    fLayerCache.reset(SkNEW_ARGS(GrLayerCache, (this)));
 
     fLastDrawWasBuffered = kNo_BufferedDraw;
 
@@ -234,6 +236,19 @@ void GrContext::getResourceCacheUsage(int* resourceCount, size_t* resourceBytes)
   if (NULL != resourceBytes) {
     *resourceBytes = fResourceCache->getCachedResourceBytes();
   }
+}
+
+GrTextContext* GrContext::createTextContext(GrRenderTarget* renderTarget,
+                                            const SkDeviceProperties&
+                                            leakyProperties,
+                                            bool enableDistanceFieldFonts) {
+    if (fGpu->caps()->pathRenderingSupport()) {
+        if (renderTarget->getStencilBuffer() && renderTarget->isMultisampled()) {
+            return SkNEW_ARGS(GrStencilAndCoverTextContext, (this, leakyProperties));
+        }
+    }
+    return SkNEW_ARGS(GrDistanceFieldTextContext, (this, leakyProperties,
+                                                   enableDistanceFieldFonts));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

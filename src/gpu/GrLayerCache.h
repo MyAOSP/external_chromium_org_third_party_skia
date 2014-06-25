@@ -9,13 +9,12 @@
 #define GrLayerCache_DEFINED
 
 #include "GrAllocPool.h"
+#include "GrAtlas.h"
 #include "GrTHashTable.h"
 #include "GrPictureUtils.h"
 #include "GrRect.h"
 
-class GrAtlasMgr;
 class GrGpu;
-class GrPlot;
 class SkPicture;
 
 // GrAtlasLocation captures an atlased item's position in the atlas. This
@@ -91,30 +90,42 @@ private:
 // The GrLayerCache caches pre-computed saveLayers for later rendering.
 // Non-atlased layers are stored in their own GrTexture while the atlased
 // layers share a single GrTexture.
-// Unlike the GrFontCache, the GrTexture atlas only has one GrAtlasMgr (for 8888)
+// Unlike the GrFontCache, the GrTexture atlas only has one GrAtlas (for 8888)
 // and one GrPlot (for the entire atlas). As such, the GrLayerCache
 // roughly combines the functionality of the GrFontCache and GrTextStrike
 // classes.
 class GrLayerCache {
 public:
-    GrLayerCache(GrGpu*);
+    GrLayerCache(GrContext*);
     ~GrLayerCache();
 
+    // As a cache, the GrLayerCache can be ordered to free up all its cached
+    // elements by the GrContext
     void freeAll();
 
-    GrCachedLayer* findLayerOrCreate(const SkPicture* picture, int id);
+    GrCachedLayer* findLayer(const SkPicture* picture, int layerID);
+    GrCachedLayer* findLayerOrCreate(const SkPicture* picture, int layerID);
+    
+    // Inform the cache that layer's cached image is now required. Return true
+    // if it was found in the ResourceCache and doesn't need to be regenerated.
+    // If false is returned the caller should (re)render the layer into the
+    // newly acquired texture.
+    bool lock(GrCachedLayer* layer, const GrTextureDesc& desc);
+
+    // Inform the cache that layer's cached image is not currently required
+    void unlock(GrCachedLayer* layer);
 
 private:
-    SkAutoTUnref<GrGpu>       fGpu;
-    SkAutoTDelete<GrAtlasMgr> fAtlasMgr; // TODO: could lazily allocate
+    GrContext*                fContext;  // pointer back to owning context
+    SkAutoTDelete<GrAtlas>    fAtlas;    // TODO: could lazily allocate
+    GrAtlas::ClientPlotUsage  fPlotUsage;
 
     class PictureLayerKey;
     GrTHashTable<GrCachedLayer, PictureLayerKey, 7> fLayerHash;
     GrTAllocPool<GrCachedLayer> fLayerPool;
 
     void init();
-    GrCachedLayer* createLayer(const SkPicture* picture, int id);
-
+    GrCachedLayer* createLayer(const SkPicture* picture, int layerID);
 };
 
 #endif

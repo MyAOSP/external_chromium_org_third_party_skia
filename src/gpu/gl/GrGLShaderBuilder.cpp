@@ -523,8 +523,11 @@ const char* GrGLShaderBuilder::fragmentPosition() {
             fOutput.fUniformHandles.fRTHeightUni =
                 this->addUniform(kFragment_Visibility, kFloat_GrSLType, "RTHeight", &rtHeightName);
 
-            this->fFSCode.prependf("\tvec4 %s = vec4(gl_FragCoord.x, %s - gl_FragCoord.y, gl_FragCoord.zw);\n",
-                                   kCoordName, rtHeightName);
+            // Using glFragCoord.zw for the last two components tickles an Adreno driver bug that
+            // causes programs to fail to link. Making this function return a vec2() didn't fix the
+            // problem but using 1.0 for the last two components does.
+            this->fFSCode.prependf("\tvec4 %s = vec4(gl_FragCoord.x, %s - gl_FragCoord.y, 1.0, "
+                                   "1.0);\n", kCoordName, rtHeightName);
             fSetupFragPosition = true;
         }
         SkASSERT(fOutput.fUniformHandles.fRTHeightUni.isValid());
