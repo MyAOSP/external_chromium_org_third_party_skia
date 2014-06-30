@@ -164,7 +164,11 @@ public:
      *  the bitmap of the pixels that the canvas draws into. The reference count
      *  of the returned device is not changed by this call.
      */
+#ifndef SK_SUPPORT_LEGACY_GETDEVICE
+protected:  // Can we make this private?
+#endif
     SkBaseDevice* getDevice() const;
+public:
 
     /**
      *  saveLayer() can create another device (which is later drawn onto
@@ -293,9 +297,9 @@ public:
 
     enum SaveFlags {
         /** save the matrix state, restoring it on restore() */
-        kMatrix_SaveFlag            = 0x01,
+        // [deprecated] kMatrix_SaveFlag            = 0x01,
         /** save the clip state, restoring it on restore() */
-        kClip_SaveFlag              = 0x02,
+        // [deprecated] kClip_SaveFlag              = 0x02,
         /** the layer needs to support per-pixel alpha */
         kHasAlphaLayer_SaveFlag     = 0x04,
         /** the layer needs to support 8-bits per color component */
@@ -308,7 +312,7 @@ public:
         kClipToLayer_SaveFlag       = 0x10,
 
         // helper masks for common choices
-        kMatrixClip_SaveFlag        = 0x03,
+        // [deprecated] kMatrixClip_SaveFlag        = 0x03,
 #ifdef SK_SUPPORT_LEGACY_CLIPTOLAYERFLAG
         kARGB_NoClipLayer_SaveFlag  = 0x0F,
 #endif
@@ -325,22 +329,6 @@ public:
         @return The value to pass to restoreToCount() to balance this save()
     */
     int save();
-
-    /** DEPRECATED - use save() instead.
-
-        This behaves the same as save(), but it allows fine-grained control of
-        which state bits to be saved (and subsequently restored).
-
-        @param flags The flags govern what portion of the Matrix/Clip/drawFilter
-                     state the save (and matching restore) effect. For example,
-                     if only kMatrix is specified, then only the matrix state
-                     will be pushed and popped. Likewise for the clip if kClip
-                     is specified.  However, the drawFilter is always affected
-                     by calls to save/restore.
-        @return The value to pass to restoreToCount() to balance this save()
-    */
-    SK_ATTR_EXTERNALLY_DEPRECATED("SaveFlags use is deprecated")
-    int save(SaveFlags flags);
 
     /** This behaves the same as save(), but in addition it allocates an
         offscreen bitmap. All drawing calls are directed there, and only when
@@ -1191,9 +1179,6 @@ protected:
         kNoLayer_SaveLayerStrategy
     };
 
-    // Transitional, pending external clients cleanup.
-    virtual void willSave(SaveFlags) { this->willSave(); }
-
     virtual void willSave() {}
     virtual SaveLayerStrategy willSaveLayer(const SkRect*, const SkPaint*, SaveFlags) {
         return kFullLayer_SaveLayerStrategy;
@@ -1289,6 +1274,7 @@ private:
     friend class SkLua;             // needs top layer size and offset
     friend class SkDebugCanvas;     // needs experimental fAllowSimplifyClip
     friend class SkDeferredDevice;  // needs getTopDevice()
+    friend class SkSurface_Raster;  // needs getDevice()
 
     SkBaseDevice* createLayerDevice(const SkImageInfo&);
 
@@ -1324,7 +1310,7 @@ private:
     void internalDrawDevice(SkBaseDevice*, int x, int y, const SkPaint*);
 
     // shared by save() and saveLayer()
-    int internalSave(SaveFlags flags);
+    int internalSave();
     void internalRestore();
     static void DrawRect(const SkDraw& draw, const SkPaint& paint,
                          const SkRect& r, SkScalar textSize);

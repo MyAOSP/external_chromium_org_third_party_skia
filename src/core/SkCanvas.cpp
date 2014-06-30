@@ -189,7 +189,6 @@ private:
 */
 class SkCanvas::MCRec {
 public:
-    int             fFlags;
     SkMatrix*       fMatrix;        // points to either fMatrixStorage or prev MCRec
     SkRasterClip*   fRasterClip;    // points to either fRegionStorage or prev MCRec
     SkDrawFilter*   fFilter;        // the current filter (or null)
@@ -203,21 +202,13 @@ public:
     */
     DeviceCM*   fTopLayer;
 
-    MCRec(const MCRec* prev, int flags) : fFlags(flags) {
+    MCRec(const MCRec* prev) {
         if (NULL != prev) {
-            if (flags & SkCanvas::kMatrix_SaveFlag) {
-                fMatrixStorage = *prev->fMatrix;
-                fMatrix = &fMatrixStorage;
-            } else {
-                fMatrix = prev->fMatrix;
-            }
+            fMatrixStorage = *prev->fMatrix;
+            fMatrix = &fMatrixStorage;
 
-            if (flags & SkCanvas::kClip_SaveFlag) {
-                fRasterClipStorage = *prev->fRasterClip;
-                fRasterClip = &fRasterClipStorage;
-            } else {
-                fRasterClip = prev->fRasterClip;
-            }
+            fRasterClipStorage = *prev->fRasterClip;
+            fRasterClip = &fRasterClipStorage;
 
             fFilter = prev->fFilter;
             SkSafeRef(fFilter);
@@ -449,7 +440,7 @@ SkBaseDevice* SkCanvas::init(SkBaseDevice* device) {
     fMetaData = NULL;
 
     fMCRec = (MCRec*)fMCStack.push_back();
-    new (fMCRec) MCRec(NULL, 0);
+    new (fMCRec) MCRec(NULL);
 
     fMCRec->fLayer = SkNEW_ARGS(DeviceCM, (NULL, 0, 0, NULL, NULL));
     fMCRec->fTopLayer = fMCRec->fLayer;
@@ -786,30 +777,21 @@ void SkCanvas::updateDeviceCMCache() {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-int SkCanvas::internalSave(SaveFlags flags) {
+int SkCanvas::internalSave() {
     int saveCount = this->getSaveCount(); // record this before the actual save
 
     MCRec* newTop = (MCRec*)fMCStack.push_back();
-    new (newTop) MCRec(fMCRec, flags);    // balanced in restore()
-
+    new (newTop) MCRec(fMCRec);    // balanced in restore()
     fMCRec = newTop;
 
-    if (SkCanvas::kClip_SaveFlag & flags) {
-        fClipStack.save();
-    }
+    fClipStack.save();
 
     return saveCount;
 }
 
 int SkCanvas::save() {
-    this->willSave(kMatrixClip_SaveFlag);
-    return this->internalSave(kMatrixClip_SaveFlag);
-}
-
-int SkCanvas::save(SaveFlags flags) {
-    this->willSave(flags);
-    // call shared impl
-    return this->internalSave(flags);
+    this->willSave();
+    return this->internalSave();
 }
 
 static bool bounds_affects_clip(SkCanvas::SaveFlags flags) {
@@ -875,12 +857,6 @@ int SkCanvas::saveLayer(const SkRect* bounds, const SkPaint* paint,
     return this->internalSaveLayer(bounds, paint, flags, false, strategy);
 }
 
-static SkBaseDevice* create_compatible_device(SkCanvas* canvas,
-                                              const SkImageInfo& info) {
-    SkBaseDevice* device = canvas->getDevice();
-    return device ? device->createCompatibleDevice(info) : NULL;
-}
-
 int SkCanvas::internalSaveLayer(const SkRect* bounds, const SkPaint* paint, SaveFlags flags,
                                 bool justForImageFilter, SaveLayerStrategy strategy) {
 #ifndef SK_SUPPORT_LEGACY_CLIPTOLAYERFLAG
@@ -889,7 +865,7 @@ int SkCanvas::internalSaveLayer(const SkRect* bounds, const SkPaint* paint, Save
 
     // do this before we create the layer. We don't call the public save() since
     // that would invoke a possibly overridden virtual
-    int count = this->internalSave(flags);
+    int count = this->internalSave();
 
     fDeviceCMDirty = true;
 
@@ -924,7 +900,10 @@ int SkCanvas::internalSaveLayer(const SkRect* bounds, const SkPaint* paint, Save
 
     SkBaseDevice* device;
     if (paint && paint->getImageFilter()) {
-        device = create_compatible_device(this, info);
+        device = this->getDevice();
+        if (device) {
+            device = device->createCompatibleDevice(info);
+        }
     } else {
         device = this->createLayerDevice(info);
     }
@@ -974,9 +953,7 @@ void SkCanvas::internalRestore() {
     fDeviceCMDirty = true;
     fCachedLocalClipBoundsDirty = true;
 
-    if (SkCanvas::kClip_SaveFlag & fMCRec->fFlags) {
-        fClipStack.restore();
-    }
+    fClipStack.restore();
 
     // reserve our layer (if any)
     DeviceCM* layer = fMCRec->fLayer;   // may be null
@@ -1402,13 +1379,8 @@ static void clip_path_helper(const SkCanvas* canvas, SkRasterClip* currClip,
             currClip->op(clip, op);
         }
     } else {
-        const SkBaseDevice* device = canvas->getDevice();
-        if (!device) {
-            currClip->setEmpty();
-            return;
-        }
-
-        base.setRect(0, 0, device->width(), device->height());
+        const SkISize size = canvas->getBaseLayerSize();
+        base.setRect(0, 0, size.width(), size.height());
 
         if (SkRegion::kReplace_Op == op) {
             currClip->setPath(devPath, base, doAA);

@@ -929,7 +929,11 @@ void SkPicturePlayback::draw(SkCanvas& canvas, SkDrawPictureCallback* callback) 
                 SkASSERT(NULL != temp->fPaint);
                 canvas.save();
                 canvas.setMatrix(initialMatrix);
-                canvas.drawBitmap(*temp->fBM, temp->fPos.fX, temp->fPos.fY, temp->fPaint);
+                SkRect src = SkRect::Make(temp->fSrcRect);
+                SkRect dst = SkRect::MakeXYWH(temp->fPos.fX, temp->fPos.fY,
+                                              temp->fSrcRect.width(),
+                                              temp->fSrcRect.height());
+                canvas.drawBitmapRectToRect(*temp->fBM, &src, dst, temp->fPaint);
                 canvas.restore();
 
                 if (it.isValid()) {
@@ -1307,7 +1311,12 @@ void SkPicturePlayback::draw(SkCanvas& canvas, SkDrawPictureCallback* callback) 
                 canvas.rotate(reader.readScalar());
                 break;
             case SAVE:
-                canvas.save((SkCanvas::SaveFlags) reader.readInt());
+                // SKPs with version < 29 also store a SaveFlags param.
+                if (size > 4) {
+                    SkASSERT(8 == size);
+                    reader.readInt();
+                }
+                canvas.save();
                 break;
             case SAVE_LAYER: {
                 const SkRect* boundsPtr = this->getRectPtr(reader);
