@@ -152,42 +152,11 @@ void SkBitmap::getBounds(SkIRect* bounds) const {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-static bool validate_alphaType(SkColorType colorType, SkAlphaType alphaType,
-                               SkAlphaType* canonical = NULL) {
-    switch (colorType) {
-        case kUnknown_SkColorType:
-            alphaType = kIgnore_SkAlphaType;
-            break;
-        case kAlpha_8_SkColorType:
-            if (kUnpremul_SkAlphaType == alphaType) {
-                alphaType = kPremul_SkAlphaType;
-            }
-            // fall-through
-        case kIndex_8_SkColorType:
-        case kARGB_4444_SkColorType:
-        case kRGBA_8888_SkColorType:
-        case kBGRA_8888_SkColorType:
-            if (kIgnore_SkAlphaType == alphaType) {
-                return false;
-            }
-            break;
-        case kRGB_565_SkColorType:
-            alphaType = kOpaque_SkAlphaType;
-            break;
-        default:
-            return false;
-    }
-    if (canonical) {
-        *canonical = alphaType;
-    }
-    return true;
-}
-
 bool SkBitmap::setInfo(const SkImageInfo& origInfo, size_t rowBytes) {
     SkImageInfo info = origInfo;
 
-    if (!validate_alphaType(info.fColorType, info.fAlphaType,
-                            &info.fAlphaType)) {
+    if (!SkColorTypeValidateAlphaType(info.fColorType, info.fAlphaType,
+                                      &info.fAlphaType)) {
         return reset_return_false(this);
     }
 
@@ -208,7 +177,7 @@ bool SkBitmap::setInfo(const SkImageInfo& origInfo, size_t rowBytes) {
         rowBytes = 0;
     } else if (0 == rowBytes) {
         rowBytes = (size_t)mrb;
-    } else if (rowBytes < info.minRowBytes()) {
+    } else if (!info.validRowBytes(rowBytes)) {
         return reset_return_false(this);
     }
 
@@ -228,7 +197,7 @@ bool SkBitmap::setConfig(Config config, int width, int height, size_t rowBytes,
 #endif
 
 bool SkBitmap::setAlphaType(SkAlphaType alphaType) {
-    if (!validate_alphaType(fInfo.fColorType, alphaType, &alphaType)) {
+    if (!SkColorTypeValidateAlphaType(fInfo.fColorType, alphaType, &alphaType)) {
         return false;
     }
     if (fInfo.fAlphaType != alphaType) {
@@ -370,19 +339,18 @@ bool SkBitmap::allocPixels(const SkImageInfo& requestedInfo, size_t rowBytes) {
     if (kIndex_8_SkColorType == requestedInfo.colorType()) {
         return reset_return_false(this);
     }
-    if (!this->setInfo(requestedInfo)) {
+    if (!this->setInfo(requestedInfo, rowBytes)) {
         return reset_return_false(this);
     }
     
     // setInfo may have corrected info (e.g. 565 is always opaque).
     const SkImageInfo& correctedInfo = this->info();
-    if (!correctedInfo.validRowBytes(rowBytes)) {
-        return reset_return_false(this);
-    }
-    
+    // setInfo may have computed a valid rowbytes if 0 were passed in
+    rowBytes = this->rowBytes();
+
     SkMallocPixelRef::PRFactory defaultFactory;
     
-    SkPixelRef* pr = defaultFactory.create(correctedInfo, NULL);
+    SkPixelRef* pr = defaultFactory.create(correctedInfo, rowBytes, NULL);
     if (NULL == pr) {
         return reset_return_false(this);
     }
@@ -413,7 +381,7 @@ bool SkBitmap::allocPixels(const SkImageInfo& requestedInfo, SkPixelRefFactory* 
         factory = &defaultFactory;
     }
 
-    SkPixelRef* pr = factory->create(correctedInfo, ctable);
+    SkPixelRef* pr = factory->create(correctedInfo, correctedInfo.minRowBytes(), ctable);
     if (NULL == pr) {
         return reset_return_false(this);
     }
@@ -1332,7 +1300,7 @@ void SkBitmap::legacyUnflatten(SkReadBuffer& buffer) {
     if (!buffer.validate((info.width() >= 0) && (info.height() >= 0) &&
                          SkColorTypeIsValid(info.fColorType) &&
                          SkAlphaTypeIsValid(info.fAlphaType) &&
-                         validate_alphaType(info.fColorType, info.fAlphaType) &&
+                         SkColorTypeValidateAlphaType(info.fColorType, info.fAlphaType) &&
                          info.validRowBytes(rowBytes))) {
         return;
     }
