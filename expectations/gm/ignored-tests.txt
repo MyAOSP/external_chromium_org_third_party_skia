@@ -36,6 +36,10 @@
 # reed: bitmapfilters changed (labels) with hide_config CL, just need rebaselines
 bitmapfilters
 
+# egdaniel dashing4 gm will now correctly contain dotted lines for gpu (previous missing)
+# /usr/lib/x86_64-linux-gnu/libfontconfig
+dashing4
+
 # humper:
 # Needs rebaselining after faster GPU blur patch lands
 megalooper_0x0
@@ -60,7 +64,6 @@ filterbitmap_text_3.00pt
 filterbitmap_text_7.00pt
 filterbitmap_text_10.00pt
 texteffects
-gammatext
 fontscaler
 imageblur_large
 imageblur
@@ -82,8 +85,6 @@ lineclosepath
 cubicpath
 quadpath
 linepath
-imagefiltersgraph
-gradtext
 drawlooper
 emptypath
 lcdtext
@@ -98,24 +99,19 @@ xfermodes2
 downsamplebitmap_text_none_72.00pt
 displacement
 xfermodes
-shadertext
 arithmode
-verttext
 bitmapsource
 xfermodes3
 typeface
 twopointconical
-stroketext
 complexclip_aa
 complexclip_bw
 stroke-fill
-tileimagefilter
 getpostextpath
 drawbitmaprect
 simpleaaclip_aaclip
 simpleaaclip_path
 simpleaaclip_rect
-shadertext2
 blurs
 complexclip_aa_layer
 complexclip_bw_layer
@@ -123,8 +119,6 @@ scaled_tilemodes_npot
 tilemodes
 tilemodes_npot
 scaled_tilemodes
-bitmapfilters
-imagefiltersbase
 pictureimagefilter
 srcmode
 image-surface
