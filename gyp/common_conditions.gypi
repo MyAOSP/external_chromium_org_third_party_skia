@@ -364,15 +364,10 @@
         # Optimizations for chromium (m30)
         'GR_GL_CUSTOM_SETUP_HEADER "gl/GrGLConfig_chrome.h"',
         'IGNORE_ROT_AA_RECT_OPT',
-        # Disable this check because it is too strict for some chromium-specific
-        # subclasses of SkPixelRef. See bug: crbug.com/171776.
-        'SK_DISABLE_PIXELREF_LOCKCOUNT_BALANCE_CHECK',
         'SkLONGLONG int64_t',
         'SK_DEFAULT_FONT_CACHE_LIMIT   (768 * 1024)',
         'SK_ATOMICS_PLATFORM_H "../../src/ports/SkAtomics_sync.h"',
         'SK_MUTEX_PLATFORM_H "../../src/ports/SkMutex_pthread.h"',
-        # Still need to switch Android to the new name for N32.
-        'kNative_8888_SkColorType kN32_SkColorType',
         # Needed until we fix skbug.com/2440.
         'SK_SUPPORT_LEGACY_CLIPTOLAYERFLAG',
         # Transitional, for deprecated SkCanvas::SaveFlags methods.

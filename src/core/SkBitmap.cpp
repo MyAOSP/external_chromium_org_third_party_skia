@@ -97,48 +97,6 @@ SkBitmap::Config SkBitmap::config() const {
 }
 #endif
 
-#ifdef SK_SUPPORT_LEGACY_COMPUTE_CONFIG_SIZE
-int SkBitmap::ComputeBytesPerPixel(SkBitmap::Config config) {
-    int bpp;
-    switch (config) {
-        case kNo_Config:
-            bpp = 0;   // not applicable
-            break;
-        case kA8_Config:
-        case kIndex8_Config:
-            bpp = 1;
-            break;
-        case kRGB_565_Config:
-        case kARGB_4444_Config:
-            bpp = 2;
-            break;
-        case kARGB_8888_Config:
-            bpp = 4;
-            break;
-        default:
-            SkDEBUGFAIL("unknown config");
-            bpp = 0;   // error
-            break;
-    }
-    return bpp;
-}
-
-size_t SkBitmap::ComputeRowBytes(Config c, int width) {
-    return SkColorTypeMinRowBytes(SkBitmapConfigToColorType(c), width);
-}
-
-int64_t SkBitmap::ComputeSize64(Config config, int width, int height) {
-    SkColorType ct = SkBitmapConfigToColorType(config);
-    int64_t rowBytes = sk_64_mul(SkColorTypeBytesPerPixel(ct), width);
-    return rowBytes * height;
-}
-
-size_t SkBitmap::ComputeSize(Config c, int width, int height) {
-    int64_t size = SkBitmap::ComputeSize64(c, width, height);
-    return sk_64_isS32(size) ? sk_64_asS32(size) : 0;
-}
-#endif
-
 void SkBitmap::getBounds(SkRect* bounds) const {
     SkASSERT(bounds);
     bounds->set(0, 0,
@@ -187,14 +145,6 @@ bool SkBitmap::setInfo(const SkImageInfo& origInfo, size_t rowBytes) {
     fRowBytes = SkToU32(rowBytes);
     return true;
 }
-
-#ifdef SK_SUPPORT_LEGACY_SETCONFIG
-bool SkBitmap::setConfig(Config config, int width, int height, size_t rowBytes,
-                         SkAlphaType alphaType) {
-    SkColorType ct = SkBitmapConfigToColorType(config);
-    return this->setInfo(SkImageInfo::Make(width, height, ct, alphaType), rowBytes);
-}
-#endif
 
 bool SkBitmap::setAlphaType(SkAlphaType alphaType) {
     if (!SkColorTypeValidateAlphaType(fInfo.fColorType, alphaType, &alphaType)) {
@@ -1292,6 +1242,7 @@ enum {
 };
 
 void SkBitmap::legacyUnflatten(SkReadBuffer& buffer) {
+#ifdef SK_SUPPORT_LEGACY_PIXELREF_UNFLATTENABLE
     this->reset();
 
     SkImageInfo info;
@@ -1317,7 +1268,7 @@ void SkBitmap::legacyUnflatten(SkReadBuffer& buffer) {
                 origin.fX = buffer.readInt();
                 origin.fY = buffer.readInt();
                 size_t offset = origin.fY * rowBytes + origin.fX * info.bytesPerPixel();
-                SkPixelRef* pr = buffer.readPixelRef();
+                SkPixelRef* pr = buffer.readFlattenable<SkPixelRef>();
                 if (!buffer.validate((NULL == pr) ||
                        (pr->getAllocatedSizeInBytes() >= (offset + this->getSafeSize())))) {
                     origin.setZero();
@@ -1332,6 +1283,9 @@ void SkBitmap::legacyUnflatten(SkReadBuffer& buffer) {
                 sk_throw();
         }
     }
+#else
+    sk_throw();
+#endif
 }
 
 ///////////////////////////////////////////////////////////////////////////////
