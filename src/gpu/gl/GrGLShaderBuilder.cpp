@@ -337,7 +337,7 @@ void GrGLShaderBuilder::nameVariable(SkString* out, char prefix, const char* nam
 
 const char* GrGLShaderBuilder::dstColor() {
     if (fCodeStage.inStageCode()) {
-        const GrEffectRef& effect = *fCodeStage.effectStage()->getEffect();
+        const GrEffect* effect = fCodeStage.effectStage()->getEffect();
         if (!effect->willReadDstColor()) {
             SkDEBUGFAIL("GrGLEffect asked for dst color but its generating GrEffect "
                          "did not request access.");
@@ -487,7 +487,7 @@ SkString GrGLShaderBuilder::ensureFSCoords2D(const TransformedCoordsArray& coord
 
 const char* GrGLShaderBuilder::fragmentPosition() {
     if (fCodeStage.inStageCode()) {
-        const GrEffectRef& effect = *fCodeStage.effectStage()->getEffect();
+        const GrEffect* effect = fCodeStage.effectStage()->getEffect();
         if (!effect->willReadFragmentPosition()) {
             SkDEBUGFAIL("GrGLEffect asked for frag position but its generating GrEffect "
                          "did not request access.");
@@ -767,6 +767,9 @@ static GrGLuint attach_shader(const GrGLContext& glCtx,
             return 0;
         }
     }
+
+    TRACE_EVENT_INSTANT1(TRACE_DISABLED_BY_DEFAULT("skia.gpu"), "skia_gpu::GLShader",
+                         TRACE_EVENT_SCOPE_THREAD, "shader", TRACE_STR_COPY(shaderSrc.c_str()));
     if (c_PrintShaders) {
         GrPrintf(shaderSrc.c_str());
         GrPrintf("\n");
