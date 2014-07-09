@@ -14,6 +14,7 @@
 #include "SkDrawPictureCallback.h"
 #include "SkImageDecoder.h"
 #include "SkRefCnt.h"
+#include "SkTDArray.h"
 
 #if SK_SUPPORT_GPU
 class GrContext;
@@ -199,7 +200,7 @@ public:
     bool suitableForGpuRasterization(GrContext*, const char ** = NULL) const;
 #endif
 
-protected:
+private:
     // V2 : adds SkPixelRef's generation ID.
     // V3 : PictInfo tag at beginning, and EOF tag at the end
     // V4 : move SkPictInfo to be the header
@@ -240,7 +241,7 @@ protected:
 
     mutable uint32_t      fUniqueID;
 
-    // TODO: make fData and fWidth/fHeight private
+    // TODO: make SkPictureData const when clone method goes away
     SkAutoTDelete<SkPictureData> fData;
     int                   fWidth, fHeight;
     mutable SkAutoTUnref<const AccelData> fAccelData;
@@ -253,7 +254,6 @@ protected:
 
     SkPicture(int width, int height, const SkPictureRecord& record, bool deepCopyOps);
 
-private:
     static void WriteTagSize(SkWriteBuffer& buffer, uint32_t tag, size_t size);
     static void WriteTagSize(SkWStream* stream, uint32_t tag, size_t size);
 
@@ -261,15 +261,15 @@ private:
     // stream along with the CTMs needed for those operation.
     class OperationList : ::SkNoncopyable {
     public:
-        virtual ~OperationList() {}
-
         // The following three entry points should only be accessed if
         // 'valid' returns true.
-        virtual int numOps() const { SkASSERT(false); return 0; };
+        int numOps() const { return fOps.count(); }
         // The offset in the picture of the operation to execute.
-        virtual uint32_t offset(int index) const { SkASSERT(false); return 0; };
+        uint32_t offset(int index) const;
         // The CTM that must be installed for the operation to behave correctly
-        virtual const SkMatrix& matrix(int index) const { SkASSERT(false); return SkMatrix::I(); }
+        const SkMatrix& matrix(int index) const;
+
+        SkTDArray<void*> fOps;
     };
 
     /** PRIVATE / EXPERIMENTAL -- do not call

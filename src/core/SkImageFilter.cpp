@@ -32,23 +32,6 @@ SkImageFilter::SkImageFilter(int inputCount, SkImageFilter** inputs, const CropR
     }
 }
 
-SkImageFilter::SkImageFilter(SkImageFilter* input, const CropRect* cropRect)
-  : fInputCount(1),
-    fInputs(new SkImageFilter*[1]),
-    fCropRect(cropRect ? *cropRect : CropRect(SkRect(), 0x0)) {
-    fInputs[0] = input;
-    SkSafeRef(fInputs[0]);
-}
-
-SkImageFilter::SkImageFilter(SkImageFilter* input1, SkImageFilter* input2, const CropRect* cropRect)
-  : fInputCount(2), fInputs(new SkImageFilter*[2]),
-    fCropRect(cropRect ? *cropRect : CropRect(SkRect(), 0x0)) {
-    fInputs[0] = input1;
-    fInputs[1] = input2;
-    SkSafeRef(fInputs[0]);
-    SkSafeRef(fInputs[1]);
-}
-
 SkImageFilter::~SkImageFilter() {
     for (int i = 0; i < fInputCount; i++) {
         SkSafeUnref(fInputs[i]);
@@ -196,7 +179,7 @@ bool SkImageFilter::filterImageGPU(Proxy* proxy, const SkBitmap& src, const Cont
     am.setIdentity(context);
     GrContext::AutoRenderTarget art(context, dst.texture()->asRenderTarget());
     GrContext::AutoClip acs(context, dstRect);
-    GrEffectRef* effect;
+    GrEffect* effect;
     offset->fX = bounds.left();
     offset->fY = bounds.top();
     bounds.offset(-srcOffset);
@@ -204,9 +187,8 @@ bool SkImageFilter::filterImageGPU(Proxy* proxy, const SkBitmap& src, const Cont
     matrix.postTranslate(SkIntToScalar(-bounds.left()), SkIntToScalar(-bounds.top()));
     this->asNewEffect(&effect, srcTexture, matrix, bounds);
     SkASSERT(effect);
-    SkAutoUnref effectRef(effect);
     GrPaint paint;
-    paint.addColorEffect(effect);
+    paint.addColorEffect(effect)->unref();
     context->drawRectToRect(paint, dstRect, srcRect);
 
     SkAutoTUnref<GrTexture> resultTex(dst.detach());
@@ -299,7 +281,7 @@ bool SkImageFilter::onFilterBounds(const SkIRect& src, const SkMatrix& ctm,
     return true;
 }
 
-bool SkImageFilter::asNewEffect(GrEffectRef**, GrTexture*, const SkMatrix&, const SkIRect&) const {
+bool SkImageFilter::asNewEffect(GrEffect**, GrTexture*, const SkMatrix&, const SkIRect&) const {
     return false;
 }
 

@@ -330,9 +330,8 @@ bool SkColorMatrixFilter::asColorMatrix(SkScalar matrix[20]) const {
 
 class ColorMatrixEffect : public GrEffect {
 public:
-    static GrEffectRef* Create(const SkColorMatrix& matrix) {
-        AutoEffectUnref effect(SkNEW_ARGS(ColorMatrixEffect, (matrix)));
-        return CreateEffectRef(effect);
+    static GrEffect* Create(const SkColorMatrix& matrix) {
+        return SkNEW_ARGS(ColorMatrixEffect, (matrix));
     }
 
     static const char* Name() { return "Color Matrix"; }
@@ -469,10 +468,10 @@ private:
 
 GR_DEFINE_EFFECT_TEST(ColorMatrixEffect);
 
-GrEffectRef* ColorMatrixEffect::TestCreate(SkRandom* random,
-                                           GrContext*,
-                                           const GrDrawTargetCaps&,
-                                           GrTexture* dummyTextures[2]) {
+GrEffect* ColorMatrixEffect::TestCreate(SkRandom* random,
+                                        GrContext*,
+                                        const GrDrawTargetCaps&,
+                                        GrTexture* dummyTextures[2]) {
     SkColorMatrix colorMatrix;
     for (size_t i = 0; i < SK_ARRAY_COUNT(colorMatrix.fMat); ++i) {
         colorMatrix.fMat[i] = random->nextSScalar1();
@@ -480,7 +479,7 @@ GrEffectRef* ColorMatrixEffect::TestCreate(SkRandom* random,
     return ColorMatrixEffect::Create(colorMatrix);
 }
 
-GrEffectRef* SkColorMatrixFilter::asNewEffect(GrContext*) const {
+GrEffect* SkColorMatrixFilter::asNewEffect(GrContext*) const {
     return ColorMatrixEffect::Create(fMatrix);
 }
 

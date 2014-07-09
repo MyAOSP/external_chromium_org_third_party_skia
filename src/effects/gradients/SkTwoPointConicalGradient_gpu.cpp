@@ -59,12 +59,11 @@ class GLEdge2PtConicalEffect;
 class Edge2PtConicalEffect : public GrGradientEffect {
 public:
 
-    static GrEffectRef* Create(GrContext* ctx,
-                               const SkTwoPointConicalGradient& shader,
-                               const SkMatrix& matrix,
-                               SkShader::TileMode tm) {
-        AutoEffectUnref effect(SkNEW_ARGS(Edge2PtConicalEffect, (ctx, shader, matrix, tm)));
-        return CreateEffectRef(effect);
+    static GrEffect* Create(GrContext* ctx,
+                            const SkTwoPointConicalGradient& shader,
+                            const SkMatrix& matrix,
+                            SkShader::TileMode tm) {
+        return SkNEW_ARGS(Edge2PtConicalEffect, (ctx, shader, matrix, tm));
     }
 
     virtual ~Edge2PtConicalEffect() {}
@@ -173,10 +172,10 @@ const GrBackendEffectFactory& Edge2PtConicalEffect::getFactory() const {
 
 GR_DEFINE_EFFECT_TEST(Edge2PtConicalEffect);
 
-GrEffectRef* Edge2PtConicalEffect::TestCreate(SkRandom* random,
-                                              GrContext* context,
-                                              const GrDrawTargetCaps&,
-                                              GrTexture**) {
+GrEffect* Edge2PtConicalEffect::TestCreate(SkRandom* random,
+                                           GrContext* context,
+                                           const GrDrawTargetCaps&,
+                                           GrTexture**) {
     SkPoint center1 = {random->nextUScalar1(), random->nextUScalar1()};
     SkScalar radius1 = random->nextUScalar1();
     SkPoint center2;
@@ -203,9 +202,9 @@ GrEffectRef* Edge2PtConicalEffect::TestCreate(SkRandom* random,
                                                                           colors, stops, colorCount,
                                                                           tm));
     SkPaint paint;
-    GrEffectRef* effect;
-    GrColor grColor;
-    shader->asNewEffect(context, paint, NULL, &grColor, &effect);
+    GrEffect* effect;
+    GrColor paintColor;
+    SkAssertResult(shader->asNewEffect(context, paint, NULL, &paintColor, &effect));
     return effect;
 }
 
@@ -366,13 +365,12 @@ class GLFocalOutside2PtConicalEffect;
 class FocalOutside2PtConicalEffect : public GrGradientEffect {
 public:
 
-    static GrEffectRef* Create(GrContext* ctx,
-                               const SkTwoPointConicalGradient& shader,
-                               const SkMatrix& matrix,
-                               SkShader::TileMode tm,
-                               SkScalar focalX) {
-        AutoEffectUnref effect(SkNEW_ARGS(FocalOutside2PtConicalEffect, (ctx, shader, matrix, tm, focalX)));
-        return CreateEffectRef(effect);
+    static GrEffect* Create(GrContext* ctx,
+                            const SkTwoPointConicalGradient& shader,
+                            const SkMatrix& matrix,
+                            SkShader::TileMode tm,
+                            SkScalar focalX) {
+        return SkNEW_ARGS(FocalOutside2PtConicalEffect, (ctx, shader, matrix, tm, focalX));
     }
 
     virtual ~FocalOutside2PtConicalEffect() { }
@@ -450,10 +448,10 @@ const GrBackendEffectFactory& FocalOutside2PtConicalEffect::getFactory() const {
 
 GR_DEFINE_EFFECT_TEST(FocalOutside2PtConicalEffect);
 
-GrEffectRef* FocalOutside2PtConicalEffect::TestCreate(SkRandom* random,
-                                                      GrContext* context,
-                                                      const GrDrawTargetCaps&,
-                                                      GrTexture**) {
+GrEffect* FocalOutside2PtConicalEffect::TestCreate(SkRandom* random,
+                                                   GrContext* context,
+                                                   const GrDrawTargetCaps&,
+                                                   GrTexture**) {
     SkPoint center1 = {random->nextUScalar1(), random->nextUScalar1()};
     SkScalar radius1 = 0.f;
     SkPoint center2;
@@ -477,9 +475,9 @@ GrEffectRef* FocalOutside2PtConicalEffect::TestCreate(SkRandom* random,
                                                                           colors, stops, colorCount,
                                                                           tm));
     SkPaint paint;
-    GrEffectRef* effect;
-    GrColor grColor;
-    shader->asNewEffect(context, paint, NULL, &grColor, &effect);
+    GrEffect* effect;
+    GrColor paintColor;
+    SkAssertResult(shader->asNewEffect(context, paint, NULL, &paintColor, &effect));
     return effect;
 }
 
@@ -581,13 +579,12 @@ class GLFocalInside2PtConicalEffect;
 class FocalInside2PtConicalEffect : public GrGradientEffect {
 public:
 
-    static GrEffectRef* Create(GrContext* ctx,
-                               const SkTwoPointConicalGradient& shader,
-                               const SkMatrix& matrix,
-                               SkShader::TileMode tm,
-                               SkScalar focalX) {
-        AutoEffectUnref effect(SkNEW_ARGS(FocalInside2PtConicalEffect, (ctx, shader, matrix, tm, focalX)));
-        return CreateEffectRef(effect);
+    static GrEffect* Create(GrContext* ctx,
+                            const SkTwoPointConicalGradient& shader,
+                            const SkMatrix& matrix,
+                            SkShader::TileMode tm,
+                            SkScalar focalX) {
+        return SkNEW_ARGS(FocalInside2PtConicalEffect, (ctx, shader, matrix, tm, focalX));
     }
 
     virtual ~FocalInside2PtConicalEffect() {}
@@ -660,10 +657,10 @@ const GrBackendEffectFactory& FocalInside2PtConicalEffect::getFactory() const {
 
 GR_DEFINE_EFFECT_TEST(FocalInside2PtConicalEffect);
 
-GrEffectRef* FocalInside2PtConicalEffect::TestCreate(SkRandom* random,
-                                                     GrContext* context,
-                                                     const GrDrawTargetCaps&,
-                                                     GrTexture**) {
+GrEffect* FocalInside2PtConicalEffect::TestCreate(SkRandom* random,
+                                                  GrContext* context,
+                                                  const GrDrawTargetCaps&,
+                                                  GrTexture**) {
     SkPoint center1 = {random->nextUScalar1(), random->nextUScalar1()};
     SkScalar radius1 = 0.f;
     SkPoint center2;
@@ -689,10 +686,10 @@ GrEffectRef* FocalInside2PtConicalEffect::TestCreate(SkRandom* random,
                                                                           colors, stops, colorCount,
                                                                           tm));
     SkPaint paint;
-    GrColor grColor;
-    GrEffectRef* grEffect;
-    shader->asNewEffect(context, paint, NULL, &grColor, &grEffect);
-    return grEffect;
+    GrColor paintColor;
+    GrEffect* effect;
+    SkAssertResult(shader->asNewEffect(context, paint, NULL, &paintColor, &effect));
+    return effect;
 }
 
 GLFocalInside2PtConicalEffect::GLFocalInside2PtConicalEffect(const GrBackendEffectFactory& factory,
@@ -815,13 +812,12 @@ class GLCircleInside2PtConicalEffect;
 class CircleInside2PtConicalEffect : public GrGradientEffect {
 public:
 
-    static GrEffectRef* Create(GrContext* ctx,
-                               const SkTwoPointConicalGradient& shader,
-                               const SkMatrix& matrix,
-                               SkShader::TileMode tm,
-                               const CircleConicalInfo& info) {
-        AutoEffectUnref effect(SkNEW_ARGS(CircleInside2PtConicalEffect, (ctx, shader, matrix, tm, info)));
-        return CreateEffectRef(effect);
+    static GrEffect* Create(GrContext* ctx,
+                            const SkTwoPointConicalGradient& shader,
+                            const SkMatrix& matrix,
+                            SkShader::TileMode tm,
+                            const CircleConicalInfo& info) {
+        return SkNEW_ARGS(CircleInside2PtConicalEffect, (ctx, shader, matrix, tm, info));
     }
 
     virtual ~CircleInside2PtConicalEffect() {}
@@ -906,10 +902,10 @@ const GrBackendEffectFactory& CircleInside2PtConicalEffect::getFactory() const {
 
 GR_DEFINE_EFFECT_TEST(CircleInside2PtConicalEffect);
 
-GrEffectRef* CircleInside2PtConicalEffect::TestCreate(SkRandom* random,
-                                                      GrContext* context,
-                                                      const GrDrawTargetCaps&,
-                                                      GrTexture**) {
+GrEffect* CircleInside2PtConicalEffect::TestCreate(SkRandom* random,
+                                                   GrContext* context,
+                                                   const GrDrawTargetCaps&,
+                                                   GrTexture**) {
     SkPoint center1 = {random->nextUScalar1(), random->nextUScalar1()};
     SkScalar radius1 = random->nextUScalar1() + 0.0001f; // make sure radius1 != 0
     SkPoint center2;
@@ -934,10 +930,10 @@ GrEffectRef* CircleInside2PtConicalEffect::TestCreate(SkRandom* random,
                                                                           colors, stops, colorCount,
                                                                           tm));
     SkPaint paint;
-    GrColor grColor;
-    GrEffectRef* grEffect;
-    shader->asNewEffect(context, paint, NULL, &grColor, &grEffect);
-    return grEffect;
+    GrColor paintColor;
+    GrEffect* effect;
+    SkAssertResult(shader->asNewEffect(context, paint, NULL, &paintColor, &effect));
+    return effect;
 }
 
 GLCircleInside2PtConicalEffect::GLCircleInside2PtConicalEffect(const GrBackendEffectFactory& factory,
@@ -1028,13 +1024,12 @@ class GLCircleOutside2PtConicalEffect;
 class CircleOutside2PtConicalEffect : public GrGradientEffect {
 public:
 
-    static GrEffectRef* Create(GrContext* ctx,
-                               const SkTwoPointConicalGradient& shader,
-                               const SkMatrix& matrix,
-                               SkShader::TileMode tm,
-                               const CircleConicalInfo& info) {
-        AutoEffectUnref effect(SkNEW_ARGS(CircleOutside2PtConicalEffect, (ctx, shader, matrix, tm, info)));
-        return CreateEffectRef(effect);
+    static GrEffect* Create(GrContext* ctx,
+                            const SkTwoPointConicalGradient& shader,
+                            const SkMatrix& matrix,
+                            SkShader::TileMode tm,
+                            const CircleConicalInfo& info) {
+        return SkNEW_ARGS(CircleOutside2PtConicalEffect, (ctx, shader, matrix, tm, info));
     }
 
     virtual ~CircleOutside2PtConicalEffect() {}
@@ -1136,10 +1131,10 @@ const GrBackendEffectFactory& CircleOutside2PtConicalEffect::getFactory() const 
 
 GR_DEFINE_EFFECT_TEST(CircleOutside2PtConicalEffect);
 
-GrEffectRef* CircleOutside2PtConicalEffect::TestCreate(SkRandom* random,
-                                                       GrContext* context,
-                                                       const GrDrawTargetCaps&,
-                                                       GrTexture**) {
+GrEffect* CircleOutside2PtConicalEffect::TestCreate(SkRandom* random,
+                                                    GrContext* context,
+                                                    const GrDrawTargetCaps&,
+                                                    GrTexture**) {
     SkPoint center1 = {random->nextUScalar1(), random->nextUScalar1()};
     SkScalar radius1 = random->nextUScalar1() + 0.0001f; // make sure radius1 != 0
     SkPoint center2;
@@ -1165,10 +1160,10 @@ GrEffectRef* CircleOutside2PtConicalEffect::TestCreate(SkRandom* random,
                                                                           colors, stops, colorCount,
                                                                           tm));
     SkPaint paint;
-    GrColor grColor;
-    GrEffectRef* grEffect;
-    shader->asNewEffect(context, paint, NULL, &grColor, &grEffect);
-    return grEffect;
+    GrColor paintColor;
+    GrEffect* effect;
+    SkAssertResult(shader->asNewEffect(context, paint, NULL, &paintColor, &effect));
+    return effect;
 }
 
 GLCircleOutside2PtConicalEffect::GLCircleOutside2PtConicalEffect(const GrBackendEffectFactory& factory,
@@ -1285,10 +1280,10 @@ GrGLEffect::EffectKey GLCircleOutside2PtConicalEffect::GenKey(const GrDrawEffect
 
 //////////////////////////////////////////////////////////////////////////////
 
-GrEffectRef* Gr2PtConicalGradientEffect::Create(GrContext* ctx,
-                                                const SkTwoPointConicalGradient& shader,
-                                                SkShader::TileMode tm,
-                                                const SkMatrix* localMatrix) {
+GrEffect* Gr2PtConicalGradientEffect::Create(GrContext* ctx,
+                                             const SkTwoPointConicalGradient& shader,
+                                             SkShader::TileMode tm,
+                                             const SkMatrix* localMatrix) {
     SkMatrix matrix;
     if (!shader.getLocalMatrix().invert(&matrix)) {
         return NULL;

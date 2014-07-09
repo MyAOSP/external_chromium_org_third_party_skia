@@ -676,12 +676,12 @@ bool SkXfermode::asMode(Mode* mode) const {
     return false;
 }
 
-bool SkXfermode::asNewEffect(GrEffectRef** effect, GrTexture* background) const {
+bool SkXfermode::asNewEffect(GrEffect** effect, GrTexture* background) const {
     return false;
 }
 
 bool SkXfermode::AsNewEffectOrCoeff(SkXfermode* xfermode,
-                                    GrEffectRef** effect,
+                                    GrEffect** effect,
                                     Coeff* src,
                                     Coeff* dst,
                                     GrTexture* background) {
@@ -793,12 +793,11 @@ public:
         return mode > SkXfermode::kLastCoeffMode && mode <= SkXfermode::kLastMode;
     }
 
-    static GrEffectRef* Create(SkXfermode::Mode mode, GrTexture* background) {
+    static GrEffect* Create(SkXfermode::Mode mode, GrTexture* background) {
         if (!IsSupportedMode(mode)) {
             return NULL;
         } else {
-            AutoEffectUnref effect(SkNEW_ARGS(XferEffect, (mode, background)));
-            return CreateEffectRef(effect);
+            return SkNEW_ARGS(XferEffect, (mode, background));
         }
     }
 
@@ -1224,14 +1223,13 @@ private:
 };
 
 GR_DEFINE_EFFECT_TEST(XferEffect);
-GrEffectRef* XferEffect::TestCreate(SkRandom* rand,
-                                    GrContext*,
-                                    const GrDrawTargetCaps&,
-                                    GrTexture*[]) {
+GrEffect* XferEffect::TestCreate(SkRandom* rand,
+                                 GrContext*,
+                                 const GrDrawTargetCaps&,
+                                 GrTexture*[]) {
     int mode = rand->nextRangeU(SkXfermode::kLastCoeffMode + 1, SkXfermode::kLastSeparableMode);
 
-    AutoEffectUnref gEffect(SkNEW_ARGS(XferEffect, (static_cast<SkXfermode::Mode>(mode), NULL)));
-    return CreateEffectRef(gEffect);
+    return SkNEW_ARGS(XferEffect, (static_cast<SkXfermode::Mode>(mode), NULL));
 }
 
 #endif
@@ -1363,8 +1361,7 @@ void SkProcCoeffXfermode::xferA8(SkAlpha* SK_RESTRICT dst,
 }
 
 #if SK_SUPPORT_GPU
-bool SkProcCoeffXfermode::asNewEffect(GrEffectRef** effect,
-                                      GrTexture* background) const {
+bool SkProcCoeffXfermode::asNewEffect(GrEffect** effect, GrTexture* background) const {
     if (XferEffect::IsSupportedMode(fMode)) {
         if (NULL != effect) {
             *effect = XferEffect::Create(fMode, background);

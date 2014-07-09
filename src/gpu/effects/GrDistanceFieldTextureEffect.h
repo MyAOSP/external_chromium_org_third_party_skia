@@ -23,20 +23,18 @@ class GrGLDistanceFieldLCDTextureEffect;
 class GrDistanceFieldTextureEffect : public GrVertexEffect {
 public:
 #ifdef SK_GAMMA_APPLY_TO_A8
-    static GrEffectRef* Create(GrTexture* tex, const GrTextureParams& params,
-                               GrTexture* gamma, const GrTextureParams& gammaParams, float lum,
-                               bool similarity) {
-        AutoEffectUnref effect(SkNEW_ARGS(GrDistanceFieldTextureEffect, (tex, params,
-                                                                         gamma, gammaParams, lum,
-                                                                         similarity)));
-#else
-    static GrEffectRef* Create(GrTexture* tex, const GrTextureParams& params,
-                               bool similarity) {
-        AutoEffectUnref effect(SkNEW_ARGS(GrDistanceFieldTextureEffect, (tex, params,
-                                                                         similarity)));
-#endif
-        return CreateEffectRef(effect);
+    static GrEffect* Create(GrTexture* tex, const GrTextureParams& params,
+                            GrTexture* gamma, const GrTextureParams& gammaParams, float lum,
+                            bool similarity) {
+       return SkNEW_ARGS(GrDistanceFieldTextureEffect, (tex, params, gamma, gammaParams, lum,
+                                                        similarity));
     }
+#else
+    static GrEffect* Create(GrTexture* tex, const GrTextureParams& params,
+                            bool similarity) {
+        return  SkNEW_ARGS(GrDistanceFieldTextureEffect, (tex, params, similarity));
+    }
+#endif
 
     virtual ~GrDistanceFieldTextureEffect() {}
 
@@ -81,14 +79,11 @@ private:
  */
 class GrDistanceFieldLCDTextureEffect : public GrVertexEffect {
 public:
-    static GrEffectRef* Create(GrTexture* tex, const GrTextureParams& params,
-                               GrTexture* gamma, const GrTextureParams& gammaParams, 
-                               SkColor textColor,
-                               bool uniformScale, bool useBGR) {
-        AutoEffectUnref effect(SkNEW_ARGS(GrDistanceFieldLCDTextureEffect,
-                                          (tex, params, gamma, gammaParams, textColor, uniformScale,
-                                           useBGR)));
-        return CreateEffectRef(effect);
+    static GrEffect* Create(GrTexture* tex, const GrTextureParams& params,
+                            GrTexture* gamma, const GrTextureParams& gammaParams, 
+                            SkColor textColor, bool uniformScale, bool useBGR) {
+        return SkNEW_ARGS(GrDistanceFieldLCDTextureEffect,
+                          (tex, params, gamma, gammaParams, textColor, uniformScale, useBGR));
     }
 
     virtual ~GrDistanceFieldLCDTextureEffect() {}

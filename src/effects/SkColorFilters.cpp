@@ -87,7 +87,7 @@ public:
 #endif
 
 #if SK_SUPPORT_GPU
-    virtual GrEffectRef* asNewEffect(GrContext*) const SK_OVERRIDE;
+    virtual GrEffect* asNewEffect(GrContext*) const SK_OVERRIDE;
 #endif
     SK_DECLARE_PUBLIC_FLATTENABLE_DESERIALIZATION_PROCS(SkModeColorFilter)
 
@@ -187,7 +187,7 @@ static inline ColorExpr color_filter_expression(const SkXfermode::Mode& mode,
 
 class ModeColorFilterEffect : public GrEffect {
 public:
-    static GrEffectRef* Create(const GrColor& c, SkXfermode::Mode mode) {
+    static GrEffect* Create(const GrColor& c, SkXfermode::Mode mode) {
         // TODO: Make the effect take the coeffs rather than mode since we already do the
         // conversion here.
         SkXfermode::Coeff srcCoeff, dstCoeff;
@@ -195,8 +195,7 @@ public:
             SkDebugf("Failing to create color filter for mode %d\n", mode);
             return NULL;
         }
-        AutoEffectUnref effect(SkNEW_ARGS(ModeColorFilterEffect, (c, mode)));
-        return CreateEffectRef(effect);
+        return SkNEW_ARGS(ModeColorFilterEffect, (c, mode));
     }
 
     virtual void getConstantColorComponents(GrColor* color, uint32_t* validFlags) const SK_OVERRIDE;
@@ -397,10 +396,10 @@ void ModeColorFilterEffect::getConstantColorComponents(GrColor* color, uint32_t*
 }
 
 GR_DEFINE_EFFECT_TEST(ModeColorFilterEffect);
-GrEffectRef* ModeColorFilterEffect::TestCreate(SkRandom* rand,
-                                    GrContext*,
-                                    const GrDrawTargetCaps&,
-                                    GrTexture*[]) {
+GrEffect* ModeColorFilterEffect::TestCreate(SkRandom* rand,
+                                            GrContext*,
+                                            const GrDrawTargetCaps&,
+                                            GrTexture*[]) {
     SkXfermode::Mode mode = SkXfermode::kDst_Mode;
     while (SkXfermode::kDst_Mode == mode) {
         mode = static_cast<SkXfermode::Mode>(rand->nextRangeU(0, SkXfermode::kLastCoeffMode));
@@ -409,7 +408,7 @@ GrEffectRef* ModeColorFilterEffect::TestCreate(SkRandom* rand,
     return ModeColorFilterEffect::Create(color, mode);
 }
 
-GrEffectRef* SkModeColorFilter::asNewEffect(GrContext*) const {
+GrEffect* SkModeColorFilter::asNewEffect(GrContext*) const {
     if (SkXfermode::kDst_Mode != fMode) {
         return ModeColorFilterEffect::Create(SkColor2GrColor(fColor), fMode);
     }

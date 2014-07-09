@@ -16,9 +16,8 @@ namespace {
 
 class YUVtoRGBEffect : public GrEffect {
 public:
-    static GrEffectRef* Create(GrTexture* yTexture, GrTexture* uTexture, GrTexture* vTexture) {
-        AutoEffectUnref effect(SkNEW_ARGS(YUVtoRGBEffect, (yTexture, uTexture, vTexture)));
-        return CreateEffectRef(effect);
+    static GrEffect* Create(GrTexture* yTexture, GrTexture* uTexture, GrTexture* vTexture) {
+        return SkNEW_ARGS(YUVtoRGBEffect, (yTexture, uTexture, vTexture));
     }
 
     static const char* Name() { return "YUV to RGB"; }
@@ -101,8 +100,6 @@ private:
 
 //////////////////////////////////////////////////////////////////////////////
 
-GrEffectRef* GrYUVtoRGBEffect::Create(GrTexture* yTexture,
-                                      GrTexture* uTexture,
-                                      GrTexture* vTexture) {
+GrEffect* GrYUVtoRGBEffect::Create(GrTexture* yTexture, GrTexture* uTexture, GrTexture* vTexture) {
     return YUVtoRGBEffect::Create(yTexture, uTexture, vTexture);
 }

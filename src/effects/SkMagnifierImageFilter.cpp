@@ -25,21 +25,20 @@ class GrGLMagnifierEffect;
 class GrMagnifierEffect : public GrSingleTextureEffect {
 
 public:
-    static GrEffectRef* Create(GrTexture* texture,
-                               float xOffset,
-                               float yOffset,
-                               float xInvZoom,
-                               float yInvZoom,
-                               float xInvInset,
-                               float yInvInset) {
-        AutoEffectUnref effect(SkNEW_ARGS(GrMagnifierEffect, (texture,
-                                                              xOffset,
-                                                              yOffset,
-                                                              xInvZoom,
-                                                              yInvZoom,
-                                                              xInvInset,
-                                                              yInvInset)));
-        return CreateEffectRef(effect);
+    static GrEffect* Create(GrTexture* texture,
+                            float xOffset,
+                            float yOffset,
+                            float xInvZoom,
+                            float yInvZoom,
+                            float xInvInset,
+                            float yInvInset) {
+        return SkNEW_ARGS(GrMagnifierEffect, (texture,
+                                              xOffset,
+                                              yOffset,
+                                              xInvZoom,
+                                              yInvZoom,
+                                              xInvInset,
+                                              yInvInset));
     }
 
     virtual ~GrMagnifierEffect() {};
@@ -182,10 +181,10 @@ void GrGLMagnifierEffect::setData(const GrGLUniformManager& uman,
 
 GR_DEFINE_EFFECT_TEST(GrMagnifierEffect);
 
-GrEffectRef* GrMagnifierEffect::TestCreate(SkRandom* random,
-                                           GrContext* context,
-                                           const GrDrawTargetCaps&,
-                                           GrTexture** textures) {
+GrEffect* GrMagnifierEffect::TestCreate(SkRandom* random,
+                                        GrContext* context,
+                                        const GrDrawTargetCaps&,
+                                        GrTexture** textures) {
     GrTexture* texture = textures[0];
     const int kMaxWidth = 200;
     const int kMaxHeight = 200;
@@ -196,7 +195,7 @@ GrEffectRef* GrMagnifierEffect::TestCreate(SkRandom* random,
     uint32_t y = random->nextULessThan(kMaxHeight - height);
     uint32_t inset = random->nextULessThan(kMaxInset);
 
-    GrEffectRef* effect = GrMagnifierEffect::Create(
+    GrEffect* effect = GrMagnifierEffect::Create(
         texture,
         (float) width / texture->width(),
         (float) height / texture->height(),
@@ -246,14 +245,15 @@ SkMagnifierImageFilter::SkMagnifierImageFilter(SkReadBuffer& buffer)
                     (fSrcRect.fLeft >= 0) && (fSrcRect.fTop >= 0));
 }
 
-// FIXME:  implement single-input semantics
-SkMagnifierImageFilter::SkMagnifierImageFilter(const SkRect& srcRect, SkScalar inset)
-    : INHERITED(0), fSrcRect(srcRect), fInset(inset) {
+SkMagnifierImageFilter::SkMagnifierImageFilter(const SkRect& srcRect, SkScalar inset,
+                                               SkImageFilter* input)
+    : INHERITED(1, &input), fSrcRect(srcRect), fInset(inset) {
     SkASSERT(srcRect.x() >= 0 && srcRect.y() >= 0 && inset >= 0);
 }
 
 #if SK_SUPPORT_GPU
-bool SkMagnifierImageFilter::asNewEffect(GrEffectRef** effect, GrTexture* texture, const SkMatrix&, const SkIRect&) const {
+bool SkMagnifierImageFilter::asNewEffect(GrEffect** effect, GrTexture* texture, const SkMatrix&,
+                                         const SkIRect&) const {
     if (effect) {
         SkScalar yOffset = (texture->origin() == kTopLeft_GrSurfaceOrigin) ? fSrcRect.y() :
                            (texture->height() - (fSrcRect.y() + fSrcRect.height()));

@@ -480,12 +480,11 @@ private:
 class GrLinearGradient : public GrGradientEffect {
 public:
 
-    static GrEffectRef* Create(GrContext* ctx,
-                               const SkLinearGradient& shader,
-                               const SkMatrix& matrix,
-                               SkShader::TileMode tm) {
-        AutoEffectUnref effect(SkNEW_ARGS(GrLinearGradient, (ctx, shader, matrix, tm)));
-        return CreateEffectRef(effect);
+    static GrEffect* Create(GrContext* ctx,
+                            const SkLinearGradient& shader,
+                            const SkMatrix& matrix,
+                            SkShader::TileMode tm) {
+        return SkNEW_ARGS(GrLinearGradient, (ctx, shader, matrix, tm));
     }
 
     virtual ~GrLinearGradient() { }
@@ -512,10 +511,10 @@ private:
 
 GR_DEFINE_EFFECT_TEST(GrLinearGradient);
 
-GrEffectRef* GrLinearGradient::TestCreate(SkRandom* random,
-                                          GrContext* context,
-                                          const GrDrawTargetCaps&,
-                                          GrTexture**) {
+GrEffect* GrLinearGradient::TestCreate(SkRandom* random,
+                                       GrContext* context,
+                                       const GrDrawTargetCaps&,
+                                       GrTexture**) {
     SkPoint points[] = {{random->nextUScalar1(), random->nextUScalar1()},
                         {random->nextUScalar1(), random->nextUScalar1()}};
 
@@ -528,9 +527,9 @@ GrEffectRef* GrLinearGradient::TestCreate(SkRandom* random,
                                                                  colors, stops, colorCount,
                                                                  tm));
     SkPaint paint;
-    GrColor grColor;
-    GrEffectRef* effect;
-    shader->asNewEffect(context, paint, NULL, &grColor, &effect);
+    GrColor paintColor;
+    GrEffect* effect;
+    SkAssertResult(shader->asNewEffect(context, paint, NULL, &paintColor, &effect));
     return effect;
 }
 
@@ -552,8 +551,8 @@ void GrGLLinearGradient::emitCode(GrGLShaderBuilder* builder,
 /////////////////////////////////////////////////////////////////////
 
 bool SkLinearGradient::asNewEffect(GrContext* context, const SkPaint& paint,
-                                   const SkMatrix* localMatrix, GrColor* grColor,
-                                   GrEffectRef** grEffect)  const {
+                                   const SkMatrix* localMatrix, GrColor* paintColor,
+                                   GrEffect** effect)  const {
     SkASSERT(NULL != context);
     
     SkMatrix matrix;
@@ -569,8 +568,8 @@ bool SkLinearGradient::asNewEffect(GrContext* context, const SkPaint& paint,
     }
     matrix.postConcat(fPtsToUnit);
     
-    *grColor = SkColor2GrColorJustAlpha(paint.getColor());
-    *grEffect = GrLinearGradient::Create(context, *this, matrix, fTileMode);
+    *paintColor = SkColor2GrColorJustAlpha(paint.getColor());
+    *effect = GrLinearGradient::Create(context, *this, matrix, fTileMode);
     
     return true;
 }
@@ -578,8 +577,8 @@ bool SkLinearGradient::asNewEffect(GrContext* context, const SkPaint& paint,
 #else
 
 bool SkLinearGradient::asNewEffect(GrContext* context, const SkPaint& paint,
-                                   const SkMatrix* localMatrix, GrColor* grColor,
-                                   GrEffectRef** grEffect)  const {
+                                   const SkMatrix* localMatrix, GrColor* paintColor,
+                                   GrEffect** effect)  const {
     SkDEBUGFAIL("Should not call in GPU-less build");
     return false;
 }

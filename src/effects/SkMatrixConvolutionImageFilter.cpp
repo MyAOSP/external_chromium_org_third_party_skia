@@ -43,7 +43,7 @@ SkMatrixConvolutionImageFilter::SkMatrixConvolutionImageFilter(
     bool convolveAlpha,
     SkImageFilter* input,
     const CropRect* cropRect)
-  : INHERITED(input, cropRect),
+  : INHERITED(1, &input, cropRect),
     fKernelSize(kernelSize),
     fGain(gain),
     fBias(bias),
@@ -330,25 +330,24 @@ class GrGLMatrixConvolutionEffect;
 class GrMatrixConvolutionEffect : public GrSingleTextureEffect {
 public:
     typedef SkMatrixConvolutionImageFilter::TileMode TileMode;
-    static GrEffectRef* Create(GrTexture* texture,
-                               const SkIRect& bounds,
-                               const SkISize& kernelSize,
-                               const SkScalar* kernel,
-                               SkScalar gain,
-                               SkScalar bias,
-                               const SkIPoint& kernelOffset,
-                               TileMode tileMode,
-                               bool convolveAlpha) {
-        AutoEffectUnref effect(SkNEW_ARGS(GrMatrixConvolutionEffect, (texture,
-                                                                      bounds,
-                                                                      kernelSize,
-                                                                      kernel,
-                                                                      gain,
-                                                                      bias,
-                                                                      kernelOffset,
-                                                                      tileMode,
-                                                                      convolveAlpha)));
-        return CreateEffectRef(effect);
+    static GrEffect* Create(GrTexture* texture,
+                            const SkIRect& bounds,
+                            const SkISize& kernelSize,
+                            const SkScalar* kernel,
+                            SkScalar gain,
+                            SkScalar bias,
+                            const SkIPoint& kernelOffset,
+                            TileMode tileMode,
+                            bool convolveAlpha) {
+        return SkNEW_ARGS(GrMatrixConvolutionEffect, (texture,
+                                                      bounds,
+                                                      kernelSize,
+                                                      kernel,
+                                                      gain,
+                                                      bias,
+                                                      kernelOffset,
+                                                      tileMode,
+                                                      convolveAlpha));
     }
     virtual ~GrMatrixConvolutionEffect();
 
@@ -626,10 +625,10 @@ GR_DEFINE_EFFECT_TEST(GrMatrixConvolutionEffect);
 // Allows for a 5x5 kernel (or 25x1, for that matter).
 #define MAX_KERNEL_SIZE 25
 
-GrEffectRef* GrMatrixConvolutionEffect::TestCreate(SkRandom* random,
-                                                   GrContext* context,
-                                                   const GrDrawTargetCaps&,
-                                                   GrTexture* textures[]) {
+GrEffect* GrMatrixConvolutionEffect::TestCreate(SkRandom* random,
+                                                GrContext* context,
+                                                const GrDrawTargetCaps&,
+                                                GrTexture* textures[]) {
     int texIdx = random->nextBool() ? GrEffectUnitTest::kSkiaPMTextureIdx :
                                       GrEffectUnitTest::kAlphaTextureIdx;
     int width = random->nextRangeU(1, MAX_KERNEL_SIZE);
@@ -660,7 +659,7 @@ GrEffectRef* GrMatrixConvolutionEffect::TestCreate(SkRandom* random,
                                              convolveAlpha);
 }
 
-bool SkMatrixConvolutionImageFilter::asNewEffect(GrEffectRef** effect,
+bool SkMatrixConvolutionImageFilter::asNewEffect(GrEffect** effect,
                                                  GrTexture* texture,
                                                  const SkMatrix&,
                                                  const SkIRect& bounds
