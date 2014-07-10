@@ -8,6 +8,7 @@
 #include "SkImageFilter.h"
 
 #include "SkBitmap.h"
+#include "SkChecksum.h"
 #include "SkDevice.h"
 #include "SkReadBuffer.h"
 #include "SkWriteBuffer.h"
@@ -334,34 +335,12 @@ bool SkImageFilter::getInputResultGPU(SkImageFilter::Proxy* proxy,
 }
 #endif
 
-static uint32_t compute_hash(const uint32_t* data, int count) {
-    uint32_t hash = 0;
-
-    for (int i = 0; i < count; ++i) {
-        uint32_t k = data[i];
-        k *= 0xcc9e2d51;
-        k = (k << 15) | (k >> 17);
-        k *= 0x1b873593;
-
-        hash ^= k;
-        hash = (hash << 13) | (hash >> 19);
-        hash *= 5;
-        hash += 0xe6546b64;
-    }
-
-    //    hash ^= size;
-    hash ^= hash >> 16;
-    hash *= 0x85ebca6b;
-    hash ^= hash >> 13;
-    hash *= 0xc2b2ae35;
-    hash ^= hash >> 16;
-
-    return hash;
-}
-
 class CacheImpl : public SkImageFilter::Cache {
 public:
-    explicit CacheImpl(int minChildren) : fMinChildren(minChildren) {}
+    explicit CacheImpl(int minChildren) : fMinChildren(minChildren) {
+        SkASSERT(fMinChildren <= 2);
+    }
+
     virtual ~CacheImpl();
     bool get(const SkImageFilter* key, SkBitmap* result, SkIPoint* offset) SK_OVERRIDE;
     void set(const SkImageFilter* key, const SkBitmap& result, const SkIPoint& offset) SK_OVERRIDE;
@@ -378,7 +357,7 @@ private:
             return v.fKey;
         }
         static uint32_t Hash(Key key) {
-            return compute_hash(reinterpret_cast<const uint32_t*>(&key), sizeof(Key) / sizeof(uint32_t));
+            return SkChecksum::Murmur3(reinterpret_cast<const uint32_t*>(&key), sizeof(Key));
         }
     };
     SkTDynamicHash<Value, Key> fData;
@@ -404,7 +383,10 @@ void CacheImpl::remove(const SkImageFilter* key) {
 }
 
 void CacheImpl::set(const SkImageFilter* key, const SkBitmap& result, const SkIPoint& offset) {
-    if (key->getRefCnt() >= fMinChildren) {
+    if (fMinChildren < 2 || !key->unique()) {
+        // We take !key->unique() as a signal that there are probably at least 2 refs on the key,
+        // meaning this filter probably has at least two children and is worth caching when
+        // fMinChildren is 2.  If fMinChildren is less than two, we'll just always cache.
         fData.add(new Value(key, result, offset));
     }
 }
