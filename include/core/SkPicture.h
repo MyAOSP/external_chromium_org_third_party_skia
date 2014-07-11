@@ -123,6 +123,7 @@ public:
      * SkPictures.
      */
     void clone(SkPicture* pictures, int count) const;
+    void clone(SkPicture* pictures[], int count) const;
 #endif
 
     /** Replays the drawing commands on the specified canvas.
@@ -280,14 +281,11 @@ private:
     void createHeader(SkPictInfo* info) const;
     static bool IsValidPictInfo(const SkPictInfo& info);
 
-    friend class SkFlatPicture;
-    friend class SkPictureData;
-    friend class SkPictureRecorder; // just for SkPicture-based constructor
-    friend class SkGpuDevice;
-    friend class GrGatherCanvas;
-    friend class GrGatherDevice;
-    friend class SkDebugCanvas;
-    friend class SkPicturePlayback; // to get fData
+    friend class SkPictureData;                // to access OperationList
+    friend class SkPictureRecorder;            // just for SkPicture-based constructor
+    friend class SkGpuDevice;                  // for EXPERIMENTAL_getActiveOps/OperationList
+    friend class GrGatherCanvas;               // needs to know if old or new picture
+    friend class SkPicturePlayback;            // to get fData & OperationList
     friend class SkPictureReplacementPlayback; // to access OperationList
 
     typedef SkRefCnt INHERITED;
