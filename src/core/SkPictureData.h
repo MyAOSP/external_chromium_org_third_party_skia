@@ -120,9 +120,8 @@ private:
  * enables the data to be generated once and reused for subsequent copies.
  */
 struct SkPictCopyInfo {
-    SkPictCopyInfo() : initialized(false), controller(1024) {}
+    SkPictCopyInfo() : controller(1024) {}
 
-    bool initialized;
     SkChunkFlatController controller;
     SkTDArray<SkFlatData*> paintData;
 };
@@ -132,8 +131,6 @@ class SkPictureData {
 public:
 #ifdef SK_SUPPORT_LEGACY_PICTURE_CLONE
     SkPictureData(const SkPictureData& src, SkPictCopyInfo* deepCopyInfo = NULL);
-#else
-    SkPictureData(const SkPictureData& src);
 #endif
     SkPictureData(const SkPictureRecord& record, const SkPictInfo&, bool deepCopyOps);
     static SkPictureData* CreateFromStream(SkStream*,

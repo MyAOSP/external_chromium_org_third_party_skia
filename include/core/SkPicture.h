@@ -63,11 +63,9 @@ public:
         typedef SkRefCnt INHERITED;
     };
 
+#ifdef SK_SUPPORT_LEGACY_DEFAULT_PICTURE_CTOR
     SkPicture();
-    /** Make a copy of the contents of src. If src records more drawing after
-        this call, those elements will not appear in this picture.
-    */
-    SkPicture(const SkPicture& src);
+#endif
 
     /**  PRIVATE / EXPERIMENTAL -- do not call */
     void EXPERIMENTAL_addAccelData(const AccelData*) const;
@@ -116,14 +114,6 @@ public:
      *  Creates a thread-safe clone of the picture that is ready for playback.
      */
     SkPicture* clone() const;
-
-    /**
-     * Creates multiple thread-safe clones of this picture that are ready for
-     * playback. The resulting clones are stored in the provided array of
-     * SkPictures.
-     */
-    void clone(SkPicture* pictures, int count) const;
-    void clone(SkPicture* pictures[], int count) const;
 #endif
 
     /** Replays the drawing commands on the specified canvas.
@@ -179,7 +169,6 @@ public:
     /**
      * Returns true if any bitmaps may be produced when this SkPicture
      * is replayed.
-     * Returns false if called while still recording.
      */
     bool willPlayBackBitmaps() const;
 
@@ -232,13 +221,14 @@ private:
     // V27: Remove SkUnitMapper from gradients (and skia).
     // V28: No longer call bitmap::flatten inside SkWriteBuffer::writeBitmap.
     // V29: Removed SaveFlags parameter from save().
+    // V30: Remove redundant SkMatrix from SkLocalMatrixShader.
 
     // Note: If the picture version needs to be increased then please follow the
     // steps to generate new SKPs in (only accessible to Googlers): http://goo.gl/qATVcw
 
     // Only SKPs within the min/current picture version range (inclusive) can be read.
     static const uint32_t MIN_PICTURE_VERSION = 19;
-    static const uint32_t CURRENT_PICTURE_VERSION = 29;
+    static const uint32_t CURRENT_PICTURE_VERSION = 30;
 
     mutable uint32_t      fUniqueID;
 
@@ -249,14 +239,11 @@ private:
 
     void needsNewGenID() { fUniqueID = SK_InvalidGenID; }
 
-    // Create a new SkPicture from an existing SkPictureData. Ref count of
-    // data is unchanged.
+    // Create a new SkPicture from an existing SkPictureData. The new picture
+    // takes ownership of 'data'.
     SkPicture(SkPictureData* data, int width, int height);
 
     SkPicture(int width, int height, const SkPictureRecord& record, bool deepCopyOps);
-
-    static void WriteTagSize(SkWriteBuffer& buffer, uint32_t tag, size_t size);
-    static void WriteTagSize(SkWStream* stream, uint32_t tag, size_t size);
 
     // An OperationList encapsulates a set of operation offsets into the picture byte
     // stream along with the CTMs needed for those operation.

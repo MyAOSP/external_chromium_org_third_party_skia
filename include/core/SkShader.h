@@ -41,26 +41,19 @@ public:
 
     /**
      *  Returns the local matrix.
+     *
+     *  FIXME: This can be incorrect for a Shader with its own local matrix
+     *  that is also wrapped via CreateLocalMatrixShader.
      */
     const SkMatrix& getLocalMatrix() const { return fLocalMatrix; }
 
     /**
      *  Returns true if the local matrix is not an identity matrix.
+     *
+     *  FIXME: This can be incorrect for a Shader with its own local matrix
+     *  that is also wrapped via CreateLocalMatrixShader.
      */
     bool hasLocalMatrix() const { return !fLocalMatrix.isIdentity(); }
-
-#ifdef SK_SUPPORT_LEGACY_SHADER_LOCALMATRIX
-    /**
-     *  Set the shader's local matrix.
-     *  @param localM   The shader's new local matrix.
-     */
-    void setLocalMatrix(const SkMatrix& localM) { fLocalMatrix = localM; }
-
-    /**
-     *  Reset the shader's local matrix to identity.
-     */
-    void resetLocalMatrix() { fLocalMatrix.reset(); }
-#endif
 
     enum TileMode {
         /** replicate the edge color if the shader draws outside of its
@@ -473,8 +466,13 @@ protected:
     virtual Context* onCreateContext(const ContextRec&, void* storage) const;
 
 private:
+    // This is essentially const, but not officially so it can be modified in
+    // constructors.
     SkMatrix fLocalMatrix;
-    
+
+    // So the SkLocalMatrixShader can whack fLocalMatrix in its SkReadBuffer constructor.
+    friend class SkLocalMatrixShader;
+
     typedef SkFlattenable INHERITED;
 };
 

@@ -1,13 +1,11 @@
-
 /*
  * Copyright 2011 Google Inc.
  *
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
  */
+
 #include "SkPixelRef.h"
-#include "SkReadBuffer.h"
-#include "SkWriteBuffer.h"
 #include "SkThread.h"
 
 #ifdef SK_USE_POSIX_THREADS
@@ -107,31 +105,6 @@ SkPixelRef::SkPixelRef(const SkImageInfo& info, SkBaseMutex* mutex) : fInfo(info
     fIsImmutable = false;
     fPreLocked = false;
 }
-
-#ifdef SK_SUPPORT_LEGACY_PIXELREF_UNFLATTENABLE
-static SkImageInfo read_info(SkReadBuffer& buffer) {
-    SkImageInfo info;
-    info.unflatten(buffer);
-    return info;
-}
-
-SkPixelRef::SkPixelRef(SkReadBuffer& buffer, SkBaseMutex* mutex)
-        : INHERITED(buffer)
-        , fInfo(read_info(buffer))
-{
-    SkDEBUGCODE(SkAlphaType alphaType;)
-    SkASSERT(SkColorTypeValidateAlphaType(fInfo.colorType(), fInfo.alphaType(), &alphaType));
-    SkASSERT(fInfo.fAlphaType == alphaType);
-
-    this->setMutex(mutex);
-    fRec.zero();
-    fLockCount = 0;
-    fIsImmutable = buffer.readBool();
-    fGenerationID = buffer.readUInt();
-    fUniqueGenerationID = false;  // Conservatively assuming the original still exists.
-    fPreLocked = false;
-}
-#endif
 
 SkPixelRef::~SkPixelRef() {
     this->callGenIDChangeListeners();
