@@ -49,12 +49,17 @@ DEFINE_bool(cpu, true, "Master switch for CPU-bound work.");
 DEFINE_bool(gpu, true, "Master switch for GPU-bound work.");
 
 DEFINE_string(outResultsFile, "", "If given, write results here as JSON.");
+DEFINE_bool(resetGpuContext, true, "Reset the GrContext before running each bench.");
 
 
 static SkString humanize(double ms) {
     if (ms > 1e+3) return SkStringPrintf("%.3gs",  ms/1e3);
     if (ms < 1e-3) return SkStringPrintf("%.3gns", ms*1e6);
+#ifdef SK_BUILD_FOR_WIN
+    if (ms < 1)    return SkStringPrintf("%.3gus", ms*1e3);
+#else
     if (ms < 1)    return SkStringPrintf("%.3gµs", ms*1e3);
+#endif
     return SkStringPrintf("%.3gms", ms);
 }
 
@@ -214,6 +219,7 @@ static void create_targets(Benchmark* bench, SkTDArray<Target*>* targets) {
     }
 
 #if SK_SUPPORT_GPU
+
     #define GPU_TARGET(config, ctxType, info, samples)                                            \
         if (Target* t = is_enabled(bench, Benchmark::kGPU_Backend, #config)) {                    \
             t->surface.reset(SkSurface::NewRenderTarget(gGrFactory.get(ctxType), info, samples)); \
@@ -351,6 +357,12 @@ int tool_main(int argc, char** argv) {
             }
         }
         targets.deleteAll();
+
+    #if SK_SUPPORT_GPU
+        if (FLAGS_resetGpuContext) {
+            gGrFactory.destroyContexts();
+        }
+    #endif
     }
 
     return 0;
