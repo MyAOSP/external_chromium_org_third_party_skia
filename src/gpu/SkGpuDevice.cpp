@@ -1612,38 +1612,66 @@ void SkGpuDevice::drawVertices(const SkDraw& draw, SkCanvas::VertexMode vmode,
     CHECK_SHOULD_DRAW(draw, false);
 
     GR_CREATE_TRACE_MARKER_CONTEXT("SkGpuDevice::drawVertices", fContext);
+    
+    const uint16_t* outIndices;
+    SkAutoTDeleteArray<uint16_t> outAlloc(NULL);
+    GrPrimitiveType primType;
+    GrPaint grPaint;
+    
     // If both textures and vertex-colors are NULL, strokes hairlines with the paint's color.
     if ((NULL == texs || NULL == paint.getShader()) && NULL == colors) {
+        
         texs = NULL;
+        
         SkPaint copy(paint);
         copy.setStyle(SkPaint::kStroke_Style);
         copy.setStrokeWidth(0);
+        
+        // we ignore the shader if texs is null.
+        SkPaint2GrPaintNoShader(this->context(), copy, SkColor2GrColor(copy.getColor()),
+                                NULL == colors, &grPaint);
 
+        primType = kLines_GrPrimitiveType;
+        int triangleCount = 0;
+        switch (vmode) {
+            case SkCanvas::kTriangles_VertexMode:
+                triangleCount = indexCount / 3;
+                break;
+            case SkCanvas::kTriangleStrip_VertexMode:
+            case SkCanvas::kTriangleFan_VertexMode:
+                triangleCount = indexCount - 2;
+                break;
+        }
+        
         VertState       state(vertexCount, indices, indexCount);
         VertState::Proc vertProc = state.chooseProc(vmode);
-
-        SkPoint* pts = new SkPoint[vertexCount * 6];
+        
+        //number of indices for lines per triangle with kLines
+        indexCount = triangleCount * 6;
+        
+        outAlloc.reset(SkNEW_ARRAY(uint16_t, indexCount));
+        outIndices = outAlloc.get();
+        uint16_t* auxIndices = outAlloc.get();
         int i = 0;
         while (vertProc(&state)) {
-            pts[i] = vertices[state.f0];
-            pts[i + 1] = vertices[state.f1];
-            pts[i + 2] = vertices[state.f1];
-            pts[i + 3] = vertices[state.f2];
-            pts[i + 4] = vertices[state.f2];
-            pts[i + 5] = vertices[state.f0];
+            auxIndices[i]     = state.f0;
+            auxIndices[i + 1] = state.f1;
+            auxIndices[i + 2] = state.f1;
+            auxIndices[i + 3] = state.f2;
+            auxIndices[i + 4] = state.f2;
+            auxIndices[i + 5] = state.f0;
             i += 6;
         }
-        draw.drawPoints(SkCanvas::kLines_PointMode, i, pts, copy, true);
-        return;
-    }
-
-    GrPaint grPaint;
-    // we ignore the shader if texs is null.
-    if (NULL == texs) {
-        SkPaint2GrPaintNoShader(this->context(), paint, SkColor2GrColor(paint.getColor()),
-                                NULL == colors, &grPaint);
     } else {
-        SkPaint2GrPaintShader(this->context(), paint, NULL == colors, &grPaint);
+        outIndices = indices;
+        primType = gVertexMode2PrimitiveType[vmode];
+        
+        if (NULL == texs || NULL == paint.getShader()) {
+            SkPaint2GrPaintNoShader(this->context(), paint, SkColor2GrColor(paint.getColor()),
+                                    NULL == colors, &grPaint);
+        } else {
+            SkPaint2GrPaintShader(this->context(), paint, NULL == colors, &grPaint);
+        }
     }
 
 #if 0
@@ -1670,12 +1698,12 @@ void SkGpuDevice::drawVertices(const SkDraw& draw, SkCanvas::VertexMode vmode,
         colors = convertedColors.get();
     }
     fContext->drawVertices(grPaint,
-                           gVertexMode2PrimitiveType[vmode],
+                           primType,
                            vertexCount,
                            vertices,
                            texs,
                            colors,
-                           indices,
+                           outIndices,
                            indexCount);
 }
 
@@ -1963,21 +1991,18 @@ bool SkGpuDevice::EXPERIMENTAL_drawPicture(SkCanvas* canvas, const SkPicture* pi
 
             layerInfo->fBM = SkNEW(SkBitmap);  // fBM is allocated so ReplacementInfo can be POD
             wrap_texture(layer->texture(), 
-                         layer->rect().isEmpty() ? desc.fWidth : layer->texture()->width(),
-                         layer->rect().isEmpty() ? desc.fHeight : layer->texture()->height(),
+                         !layer->isAtlased() ? desc.fWidth : layer->texture()->width(),
+                         !layer->isAtlased() ? desc.fHeight : layer->texture()->height(),
                          layerInfo->fBM);
 
             SkASSERT(info.fPaint);
             layerInfo->fPaint = info.fPaint;
 
-            if (layer->rect().isEmpty()) {
-                layerInfo->fSrcRect = SkIRect::MakeWH(desc.fWidth, desc.fHeight);
-            } else {
-                layerInfo->fSrcRect = SkIRect::MakeXYWH(layer->rect().fLeft,
-                                                        layer->rect().fTop,
-                                                        layer->rect().width(),
-                                                        layer->rect().height());
-            }
+            layerInfo->fSrcRect = SkIRect::MakeXYWH(layer->rect().fLeft,
+                                                    layer->rect().fTop,
+                                                    layer->rect().width(),
+                                                    layer->rect().height());
+
 
             if (needsRendering) {
                 SkAutoTUnref<SkSurface> surface(SkSurface::NewRenderTargetDirect(
@@ -1987,14 +2012,12 @@ bool SkGpuDevice::EXPERIMENTAL_drawPicture(SkCanvas* canvas, const SkPicture* pi
 
                 SkCanvas* canvas = surface->getCanvas();
 
-                if (!layer->rect().isEmpty()) {
-                    // Add a rect clip to make sure the rendering doesn't
-                    // extend beyond the boundaries of the atlased sub-rect
-                    SkRect bound = SkRect::MakeXYWH(SkIntToScalar(layer->rect().fLeft),
-                                                    SkIntToScalar(layer->rect().fTop),
-                                                    SkIntToScalar(layer->rect().width()),
-                                                    SkIntToScalar(layer->rect().height()));
-                    canvas->clipRect(bound);
+                // Add a rect clip to make sure the rendering doesn't
+                // extend beyond the boundaries of the atlased sub-rect
+                SkRect bound = SkRect::Make(layerInfo->fSrcRect);
+                canvas->clipRect(bound);
+
+                if (layer->isAtlased()) {
                     // Since 'clear' doesn't respect the clip we need to draw a rect
                     // TODO: ensure none of the atlased layers contain a clear call!
                     SkPaint paint;
@@ -2004,16 +2027,12 @@ bool SkGpuDevice::EXPERIMENTAL_drawPicture(SkCanvas* canvas, const SkPicture* pi
                     canvas->clear(SK_ColorTRANSPARENT);
                 }
 
-                canvas->setMatrix(info.fCTM);
-
-                if (!layer->rect().isEmpty()) {
-                    // info.fCTM maps the layer's top/left to the origin.
-                    // Since this layer is atlased the top/left corner needs
-                    // to be offset to some arbitrary location in the backing 
-                    // texture.
-                    canvas->translate(SkIntToScalar(layer->rect().fLeft),
-                                      SkIntToScalar(layer->rect().fTop));
-                } 
+                // info.fCTM maps the layer's top/left to the origin.
+                // If this layer is atlased the top/left corner needs
+                // to be offset to some arbitrary location in the backing 
+                // texture.
+                canvas->translate(bound.fLeft, bound.fTop);
+                canvas->concat(info.fCTM);
 
                 SkPictureRangePlayback rangePlayback(picture,
                                                      info.fSaveLayerOpID, 
