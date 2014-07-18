@@ -183,6 +183,7 @@
           '-Winit-self',
           '-Wpointer-arith',
 
+          '-Wno-c++11-extensions',
           '-Wno-unused-parameter',
         ],
         'cflags_cc': [
@@ -209,12 +210,6 @@
                   '-m32',
                 ],
               }],
-            ],
-          }],
-          [ 'skia_android_framework==0', {
-            'cflags': [
-              # This flag is not supported by Android build system.
-              '-Wno-c++11-extensions',
             ],
           }],
           [ 'skia_warnings_as_errors', {
@@ -341,8 +336,6 @@
         '-mthumb',
         '-mfpu=neon',
         '-mfloat-abi=softfp',
-        # This flag is not supported by Android build system.
-        '-Wno-c++11-extensions',
         '-fno-exceptions',
         '-fstrict-aliasing',
         # Remove flags to turn on warnings, since most people building Android
@@ -370,8 +363,6 @@
         'IGNORE_ROT_AA_RECT_OPT',
         'SkLONGLONG int64_t',
         'SK_DEFAULT_FONT_CACHE_LIMIT   (768 * 1024)',
-        'SK_ATOMICS_PLATFORM_H "../../src/ports/SkAtomics_sync.h"',
-        'SK_MUTEX_PLATFORM_H "../../src/ports/SkMutex_pthread.h"',
         # Transitional, for deprecated SkCanvas::SaveFlags methods.
         'SK_ATTR_DEPRECATED=SK_NOTHING_ARG1',
         'SK_DEFAULT_GLOBAL_DISCARDABLE_MEMORY_POOL_SIZE (512 * 1024)',

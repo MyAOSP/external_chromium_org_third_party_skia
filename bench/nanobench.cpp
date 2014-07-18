@@ -21,6 +21,7 @@
 #include "SkSurface.h"
 
 #if SK_SUPPORT_GPU
+    #include "gl/GrGLDefines.h"
     #include "GrContextFactory.h"
     GrContextFactory gGrFactory;
 #endif
@@ -52,6 +53,9 @@ DEFINE_string(outResultsFile, "", "If given, write results here as JSON.");
 DEFINE_bool(resetGpuContext, true, "Reset the GrContext before running each bench.");
 DEFINE_int32(maxCalibrationAttempts, 3,
              "Try up to this many times to guess loops for a bench, or skip the bench.");
+DEFINE_int32(maxLoops, 1000000, "Never run a bench more times than this.");
+DEFINE_string(key, "", "Space-separated key/value pairs to add to JSON.");
+DEFINE_string(gitHash, "", "Git hash to add to JSON.");
 
 
 static SkString humanize(double ms) {
@@ -64,6 +68,7 @@ static SkString humanize(double ms) {
 #endif
     return SkStringPrintf("%.3gms", ms);
 }
+#define HUMANIZE(ms) humanize(ms).c_str()
 
 static double time(int loops, Benchmark* bench, SkCanvas* canvas, SkGLContextHelper* gl) {
     WallTimer timer;
@@ -92,6 +97,18 @@ static double estimate_timer_overhead() {
     return overhead / FLAGS_overheadLoops;
 }
 
+static int clamp_loops(int loops) {
+    if (loops < 1) {
+        SkDebugf("ERROR: clamping loops from %d to 1.\n", loops);
+        return 1;
+    }
+    if (loops > FLAGS_maxLoops) {
+        SkDebugf("WARNING: clamping loops from %d to FLAGS_maxLoops, %d.\n", loops, FLAGS_maxLoops);
+        return FLAGS_maxLoops;
+    }
+    return loops;
+}
+
 static int cpu_bench(const double overhead, Benchmark* bench, SkCanvas* canvas, double* samples) {
     // First figure out approximately how many loops of bench it takes to make overhead negligible.
     double bench_plus_overhead;
@@ -99,7 +116,8 @@ static int cpu_bench(const double overhead, Benchmark* bench, SkCanvas* canvas, 
     do {
         bench_plus_overhead = time(1, bench, canvas, NULL);
         if (++round == FLAGS_maxCalibrationAttempts) {
-            // At some point we have to just give up.
+            SkDebugf("WARNING: Can't estimate loops for %s (%s vs. %s); skipping.\n",
+                     bench->getName(), HUMANIZE(bench_plus_overhead), HUMANIZE(overhead));
             return 0;
         }
     } while (bench_plus_overhead < overhead);
@@ -122,7 +140,7 @@ static int cpu_bench(const double overhead, Benchmark* bench, SkCanvas* canvas, 
     // Luckily, this also works well in practice. :)
     const double numer = overhead / FLAGS_overheadGoal - overhead;
     const double denom = bench_plus_overhead - overhead;
-    const int loops = FLAGS_runOnce ? 1 : (int)ceil(numer / denom);
+    const int loops = clamp_loops(FLAGS_runOnce ? 1 : (int)ceil(numer / denom));
 
     for (int i = 0; i < FLAGS_samples; i++) {
         samples[i] = time(loops, bench, canvas, NULL) / loops;
@@ -158,6 +176,7 @@ static int gpu_bench(SkGLContextHelper* gl,
         // Might as well make sure we're not still timing our calibration.
         SK_GL(*gl, Finish());
     }
+    loops = clamp_loops(loops);
 
     // Pretty much the same deal as the calibration: do some warmup to make
     // sure we're timing steady-state pipelined frames.
@@ -260,12 +279,24 @@ static void fill_static_options(ResultsWriter* log) {
 #else
     log->option("system", "other");
 #endif
-#if defined(SK_DEBUG)
-    log->option("build", "DEBUG");
-#else
-    log->option("build", "RELEASE");
-#endif
 }
+
+#if SK_SUPPORT_GPU
+static void fill_gpu_options(ResultsWriter* log, SkGLContextHelper* ctx) {
+    const GrGLubyte* version;
+    SK_GL_RET(*ctx, version, GetString(GR_GL_VERSION));
+    log->configOption("GL_VERSION", (const char*)(version));
+
+    SK_GL_RET(*ctx, version, GetString(GR_GL_RENDERER));
+    log->configOption("GL_RENDERER", (const char*) version);
+
+    SK_GL_RET(*ctx, version, GetString(GR_GL_VENDOR));
+    log->configOption("GL_VENDOR", (const char*) version);
+
+    SK_GL_RET(*ctx, version, GetString(GR_GL_SHADING_LANGUAGE_VERSION));
+    log->configOption("GL_SHADING_LANGUAGE_VERSION", (const char*) version);
+}
+#endif
 
 int tool_main(int argc, char** argv);
 int tool_main(int argc, char** argv) {
@@ -279,15 +310,26 @@ int tool_main(int argc, char** argv) {
     }
 
     MultiResultsWriter log;
-    SkAutoTDelete<JSONResultsWriter> json;
+    SkAutoTDelete<NanoJSONResultsWriter> json;
     if (!FLAGS_outResultsFile.isEmpty()) {
-        json.reset(SkNEW(JSONResultsWriter(FLAGS_outResultsFile[0])));
+        const char* gitHash = FLAGS_gitHash.isEmpty() ? "unknown-revision" : FLAGS_gitHash[0];
+        json.reset(SkNEW(NanoJSONResultsWriter(FLAGS_outResultsFile[0], gitHash)));
         log.add(json.get());
     }
     CallEnd<MultiResultsWriter> ender(log);
+
+    if (1 == FLAGS_key.count() % 2) {
+        SkDebugf("ERROR: --key must be passed with an even number of arguments.\n");
+        return 1;
+    }
+    for (int i = 1; i < FLAGS_key.count(); i += 2) {
+        log.key(FLAGS_key[i-1], FLAGS_key[i]);
+    }
     fill_static_options(&log);
 
     const double overhead = estimate_timer_overhead();
+    SkDebugf("Timer overhead: %s\n", HUMANIZE(overhead));
+
     SkAutoTMalloc<double> samples(FLAGS_samples);
 
     if (FLAGS_runOnce) {
@@ -305,12 +347,14 @@ int tool_main(int argc, char** argv) {
         if (SkCommandLineFlags::ShouldSkip(FLAGS_match, bench->getName())) {
             continue;
         }
-        log.bench(bench->getName(), bench->getSize().fX, bench->getSize().fY);
 
         SkTDArray<Target*> targets;
         create_targets(bench.get(), &targets);
 
-        bench->preDraw();
+        if (!targets.isEmpty()) {
+            log.bench(bench->getName(), bench->getSize().fX, bench->getSize().fY);
+            bench->preDraw();
+        }
         for (int j = 0; j < targets.count(); j++) {
             SkCanvas* canvas = targets[j]->surface.get() ? targets[j]->surface->getCanvas() : NULL;
             const char* config = targets[j]->config;
@@ -325,12 +369,17 @@ int tool_main(int argc, char** argv) {
 
             if (loops == 0) {
                 SkDebugf("Unable to time %s\t%s (overhead %s)\n",
-                         bench->getName(), config, humanize(overhead).c_str());
+                         bench->getName(), config, HUMANIZE(overhead));
                 continue;
             }
 
             Stats stats(samples.get(), FLAGS_samples);
             log.config(config);
+#if SK_SUPPORT_GPU
+            if (Benchmark::kGPU_Backend == targets[j]->backend) {
+                fill_gpu_options(&log, targets[j]->gl);
+            }
+#endif
             log.timer("min_ms",    stats.min);
             log.timer("median_ms", stats.median);
             log.timer("mean_ms",   stats.mean);
@@ -344,22 +393,22 @@ int tool_main(int argc, char** argv) {
                 SkDebugf("%s\t%s\n", bench->getName(), config);
             } else if (FLAGS_verbose) {
                 for (int i = 0; i < FLAGS_samples; i++) {
-                    SkDebugf("%s  ", humanize(samples[i]).c_str());
+                    SkDebugf("%s  ", HUMANIZE(samples[i]));
                 }
                 SkDebugf("%s\n", bench->getName());
             } else if (FLAGS_quiet) {
                 if (targets.count() == 1) {
                     config = ""; // Only print the config if we run the same bench on more than one.
                 }
-                SkDebugf("%s\t%s\t%s\n", humanize(stats.median).c_str(), bench->getName(), config);
+                SkDebugf("%s\t%s\t%s\n", HUMANIZE(stats.median), bench->getName(), config);
             } else {
                 const double stddev_percent = 100 * sqrt(stats.var) / stats.mean;
                 SkDebugf("%d\t%s\t%s\t%s\t%s\t%.0f%%\t%s\t%s\t%s\n"
                         , loops
-                        , humanize(stats.min).c_str()
-                        , humanize(stats.median).c_str()
-                        , humanize(stats.mean).c_str()
-                        , humanize(stats.max).c_str()
+                        , HUMANIZE(stats.min)
+                        , HUMANIZE(stats.median)
+                        , HUMANIZE(stats.mean)
+                        , HUMANIZE(stats.max)
                         , stddev_percent
                         , stats.plot.c_str()
                         , config
