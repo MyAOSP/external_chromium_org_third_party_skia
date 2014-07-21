@@ -145,6 +145,11 @@ private:
         SkIPoint                fDstPoint;
     };
 
+    struct Clip : public ::SkNoncopyable {
+        SkClipStack fStack;
+        SkIPoint    fOrigin;
+    };
+
     // overrides from GrDrawTarget
     virtual void onDraw(const DrawInfo&) SK_OVERRIDE;
     virtual void onDrawRect(const SkRect& rect,
@@ -212,28 +217,38 @@ private:
     // TODO: Use a single allocator for commands and records
     enum {
         kCmdPreallocCnt          = 32,
-        kDrawPreallocCnt         = 8,
+        kDrawPreallocCnt         = 16,
         kStencilPathPreallocCnt  = 8,
         kDrawPathPreallocCnt     = 8,
         kDrawPathsPreallocCnt    = 8,
         kStatePreallocCnt        = 8,
         kClipPreallocCnt         = 8,
-        kClearPreallocCnt        = 4,
+        kClearPreallocCnt        = 8,
         kGeoPoolStatePreAllocCnt = 4,
         kCopySurfacePreallocCnt  = 4,
     };
 
-    SkSTArray<kCmdPreallocCnt, uint8_t, true>                          fCmds;
+    typedef GrTAllocator<DrawRecord>                        DrawAllocator;
+    typedef GrTAllocator<StencilPath>                       StencilPathAllocator;
+    typedef GrTAllocator<DrawPath>                          DrawPathAllocator;
+    typedef GrTAllocator<DrawPaths>                         DrawPathsAllocator;
+    typedef GrTAllocator<GrDrawState>                       StateAllocator;
+    typedef GrTAllocator<Clear>                             ClearAllocator;
+    typedef GrTAllocator<CopySurface>                       CopySurfaceAllocator;
+    typedef GrTAllocator<Clip>                              ClipAllocator;
+
     GrSTAllocator<kDrawPreallocCnt, DrawRecord>                        fDraws;
     GrSTAllocator<kStencilPathPreallocCnt, StencilPath>                fStencilPaths;
     GrSTAllocator<kDrawPathPreallocCnt, DrawPath>                      fDrawPath;
     GrSTAllocator<kDrawPathsPreallocCnt, DrawPaths>                    fDrawPaths;
-    GrSTAllocator<kStatePreallocCnt, GrDrawState::DeferredState>       fStates;
+    GrSTAllocator<kStatePreallocCnt, GrDrawState>                      fStates;
     GrSTAllocator<kClearPreallocCnt, Clear>                            fClears;
     GrSTAllocator<kCopySurfacePreallocCnt, CopySurface>                fCopySurfaces;
-    GrSTAllocator<kClipPreallocCnt, SkClipStack>                       fClips;
-    GrSTAllocator<kClipPreallocCnt, SkIPoint>                          fClipOrigins;
+    GrSTAllocator<kClipPreallocCnt, Clip>                              fClips;
+
     SkTArray<GrTraceMarkerSet, false>                                  fGpuCmdMarkers;
+
+    SkSTArray<kCmdPreallocCnt, uint8_t, true>                          fCmds;
 
     GrDrawTarget*                   fDstGpu;
 

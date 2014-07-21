@@ -12,6 +12,7 @@
 
 #if SK_SUPPORT_GPU
 #include "gl/GrGLEffect.h"
+#include "gl/GrGLShaderBuilder.h"
 #include "GrContext.h"
 #include "GrTBackendEffectFactory.h"
 #endif
@@ -60,9 +61,9 @@ void SkLumaColorFilter::toString(SkString* str) const {
 #if SK_SUPPORT_GPU
 class LumaColorFilterEffect : public GrEffect {
 public:
-    static GrEffectRef* Create() {
-        AutoEffectUnref effect(SkNEW(LumaColorFilterEffect));
-        return CreateEffectRef(effect);
+    static GrEffect* Create() {
+        GR_CREATE_STATIC_EFFECT(gLumaEffect, LumaColorFilterEffect, ());
+        return SkRef(gLumaEffect);
     }
 
     static const char* Name() { return "Luminance-to-Alpha"; }
@@ -121,7 +122,7 @@ private:
     }
 };
 
-GrEffectRef* SkLumaColorFilter::asNewEffect(GrContext*) const {
+GrEffect* SkLumaColorFilter::asNewEffect(GrContext*) const {
     return LumaColorFilterEffect::Create();
 }
 #endif

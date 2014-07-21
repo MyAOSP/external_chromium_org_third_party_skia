@@ -1,7 +1,6 @@
 // Main binary for DM.
 // For a high-level overview, please see dm/README.
 
-#include "Benchmark.h"
 #include "CrashHandler.h"
 #include "SkCommandLineFlags.h"
 #include "SkForceLinking.h"
@@ -11,7 +10,6 @@
 #include "Test.h"
 #include "gm.h"
 
-#include "DMBenchTask.h"
 #include "DMCpuGMTask.h"
 #include "DMGpuGMTask.h"
 #include "DMGpuSupport.h"
@@ -37,8 +35,15 @@ using skiagm::GMRegistry;
 using skiatest::Test;
 using skiatest::TestRegistry;
 
+static const char kGpuAPINameGL[] = "gl";
+static const char kGpuAPINameGLES[] = "gles";
+
 DEFINE_int32(threads, -1, "Threads for CPU work. Default NUM_CPUS.");
 DEFINE_int32(gpuThreads, 1, "Threads for GPU work.");
+DEFINE_string(gpuAPI, "", "Force use of specific gpu API.  Using \"gl\" "
+              "forces OpenGL API. Using \"gles\" forces OpenGL ES API. "
+              "Defaults to empty string, which selects the API native to the "
+              "system.");
 DEFINE_string2(expectations, r, "",
                "If a directory, compare generated images against images under this path. "
                "If a file, compare generated images against JSON expectations at this path."
@@ -61,7 +66,6 @@ DEFINE_bool(leaks, false, "Print leaked instance-counted objects at exit?");
 DEFINE_string(skps, "", "Directory to read skps from.");
 
 DEFINE_bool(gms, true, "Run GMs?");
-DEFINE_bool(benches, true, "Run benches?  Does not run GMs-as-benches.");
 DEFINE_bool(tests, true, "Run tests?");
 
 DECLARE_bool(verbose);
@@ -95,6 +99,7 @@ native;
 
 static void kick_off_gms(const SkTDArray<GMRegistry::Factory>& gms,
                          const SkTArray<SkString>& configs,
+                         GrGLStandard gpuAPI,
                          const DM::Expectations& expectations,
                          DM::Reporter* reporter,
                          DM::TaskRunner* tasks) {
@@ -104,45 +109,19 @@ static void kick_off_gms(const SkTDArray<GMRegistry::Factory>& gms,
     }
     for (int i = 0; i < gms.count(); i++) {
         for (int j = 0; j < configs.count(); j++) {
+
             START("565",        CpuGMTask, expectations, kRGB_565_SkColorType);
             START("8888",       CpuGMTask, expectations, kN32_SkColorType);
-            START("gpu",        GpuGMTask, expectations, native, 0);
-            START("msaa4",      GpuGMTask, expectations, native, 4);
-            START("msaa16",     GpuGMTask, expectations, native, 16);
-            START("nvprmsaa4",  GpuGMTask, expectations, nvpr,   4);
-            START("nvprmsaa16", GpuGMTask, expectations, nvpr,   16);
-            START("gpunull",    GpuGMTask, expectations, null,   0);
-            START("gpudebug",   GpuGMTask, expectations, debug,  0);
-            START("angle",      GpuGMTask, expectations, angle,  0);
-            START("mesa",       GpuGMTask, expectations, mesa,   0);
+            START("gpu",        GpuGMTask, expectations, native, gpuAPI, 0);
+            START("msaa4",      GpuGMTask, expectations, native, gpuAPI, 4);
+            START("msaa16",     GpuGMTask, expectations, native, gpuAPI, 16);
+            START("nvprmsaa4",  GpuGMTask, expectations, nvpr,   gpuAPI, 4);
+            START("nvprmsaa16", GpuGMTask, expectations, nvpr,   gpuAPI, 16);
+            START("gpunull",    GpuGMTask, expectations, null,   gpuAPI, 0);
+            START("gpudebug",   GpuGMTask, expectations, debug,  gpuAPI, 0);
+            START("angle",      GpuGMTask, expectations, angle,  gpuAPI, 0);
+            START("mesa",       GpuGMTask, expectations, mesa,   gpuAPI, 0);
             START("pdf",        PDFTask,   RASTERIZE_PDF_PROC);
-        }
-    }
-#undef START
-}
-
-static void kick_off_benches(const SkTDArray<BenchRegistry::Factory>& benches,
-                             const SkTArray<SkString>& configs,
-                             DM::Reporter* reporter,
-                             DM::TaskRunner* tasks) {
-#define START(name, type, ...)                                                                 \
-    if (lowercase(configs[j]).equals(name)) {                                                  \
-        tasks->add(SkNEW_ARGS(DM::type, (name, reporter, tasks, benches[i], ## __VA_ARGS__))); \
-    }
-    for (int i = 0; i < benches.count(); i++) {
-        for (int j = 0; j < configs.count(); j++) {
-            START("nonrendering", NonRenderingBenchTask);
-            START("565",          CpuBenchTask, kRGB_565_SkColorType);
-            START("8888",         CpuBenchTask, kN32_SkColorType);
-            START("gpu",          GpuBenchTask, native, 0);
-            START("msaa4",        GpuBenchTask, native, 4);
-            START("msaa16",       GpuBenchTask, native, 16);
-            START("nvprmsaa4",    GpuBenchTask, nvpr,   4);
-            START("nvprmsaa16",   GpuBenchTask, nvpr,   16);
-            START("gpunull",      GpuBenchTask, null,   0);
-            START("gpudebug",     GpuBenchTask, debug,  0);
-            START("angle",        GpuBenchTask, angle,  0);
-            START("mesa",         GpuBenchTask, mesa,   0);
         }
     }
 #undef START
@@ -186,8 +165,8 @@ static void kick_off_skps(DM::Reporter* reporter, DM::TaskRunner* tasks) {
             exit(1);
         }
 
-        tasks->add(SkNEW_ARGS(DM::SKPTask, (reporter, tasks, pic->clone(), filename)));
-        tasks->add(SkNEW_ARGS(DM::PDFTask, (reporter, tasks, pic->clone(), filename,
+        tasks->add(SkNEW_ARGS(DM::SKPTask, (reporter, tasks, pic, filename)));
+        tasks->add(SkNEW_ARGS(DM::PDFTask, (reporter, tasks, pic, filename,
                                             RASTERIZE_PDF_PROC)));
     }
 }
@@ -202,6 +181,16 @@ static void report_failures(const SkTArray<SkString>& failures) {
         SkDebugf("  %s\n", failures[i].c_str());
     }
     SkDebugf("%d failures.\n", failures.count());
+}
+
+static GrGLStandard get_gl_standard() {
+  if (FLAGS_gpuAPI.contains(kGpuAPINameGL)) {
+      return kGL_GrGLStandard;
+  }
+  if (FLAGS_gpuAPI.contains(kGpuAPINameGLES)) {
+      return kGLES_GrGLStandard;
+  }
+  return kNone_GrGLStandard;
 }
 
 template <typename T, typename Registry>
@@ -232,6 +221,8 @@ int tool_main(int argc, char** argv) {
         SkStrSplit(FLAGS_config[i], ", ", &configs);
     }
 
+    GrGLStandard gpuAPI = get_gl_standard();
+
     SkTDArray<GMRegistry::Factory> gms;
     SkAutoTDelete<DM::Expectations> expectations(SkNEW(DM::NoExpectations));
     if (FLAGS_gms) {
@@ -247,22 +238,16 @@ int tool_main(int argc, char** argv) {
         }
     }
 
-    SkTDArray<BenchRegistry::Factory> benches;
-    if (FLAGS_benches) {
-        append_matching_factories<Benchmark>(BenchRegistry::Head(), &benches);
-    }
-
     SkTDArray<TestRegistry::Factory> tests;
     if (FLAGS_tests) {
         append_matching_factories<Test>(TestRegistry::Head(), &tests);
     }
 
-    SkDebugf("(%d GMs, %d benches) x %d configs, %d tests\n",
-             gms.count(), benches.count(), configs.count(), tests.count());
+    SkDebugf("%d GMs x %d configs, %d tests\n",
+             gms.count(), configs.count(), tests.count());
     DM::Reporter reporter;
     DM::TaskRunner tasks(FLAGS_threads, FLAGS_gpuThreads);
-    kick_off_gms(gms, configs, *expectations, &reporter, &tasks);
-    kick_off_benches(benches, configs, &reporter, &tasks);
+    kick_off_gms(gms, configs, gpuAPI, *expectations, &reporter, &tasks);
     kick_off_tests(tests, &reporter, &tasks);
     kick_off_skps(&reporter, &tasks);
     tasks.wait();

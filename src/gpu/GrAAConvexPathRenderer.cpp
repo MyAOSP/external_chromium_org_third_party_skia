@@ -19,6 +19,7 @@
 #include "SkTraceEvent.h"
 
 #include "gl/GrGLEffect.h"
+#include "gl/GrGLShaderBuilder.h"
 #include "gl/GrGLSL.h"
 #include "gl/GrGLVertexEffect.h"
 
@@ -506,7 +507,7 @@ static void create_vertices(const SegmentArray&  segments,
 class QuadEdgeEffect : public GrVertexEffect {
 public:
 
-    static GrEffectRef* Create() {
+    static GrEffect* Create() {
         GR_CREATE_STATIC_EFFECT(gQuadEdgeEffect, QuadEdgeEffect, ());
         gQuadEdgeEffect->ref();
         return gQuadEdgeEffect;
@@ -595,10 +596,10 @@ private:
 
 GR_DEFINE_EFFECT_TEST(QuadEdgeEffect);
 
-GrEffectRef* QuadEdgeEffect::TestCreate(SkRandom* random,
-                                        GrContext*,
-                                        const GrDrawTargetCaps& caps,
-                                        GrTexture*[]) {
+GrEffect* QuadEdgeEffect::TestCreate(SkRandom* random,
+                                     GrContext*,
+                                     const GrDrawTargetCaps& caps,
+                                     GrTexture*[]) {
     // Doesn't work without derivative instructions.
     return caps.shaderDerivativeSupport() ? QuadEdgeEffect::Create() : NULL;
 }
@@ -675,7 +676,7 @@ bool GrAAConvexPathRenderer::onDrawPath(const SkPath& origPath,
     drawState->setVertexAttribs<gPathAttribs>(SK_ARRAY_COUNT(gPathAttribs));
 
     static const int kEdgeAttrIndex = 1;
-    GrEffectRef* quadEffect = QuadEdgeEffect::Create();
+    GrEffect* quadEffect = QuadEdgeEffect::Create();
     drawState->addCoverageEffect(quadEffect, kEdgeAttrIndex)->unref();
 
     GrDrawTarget::AutoReleaseGeometry arg(target, vCount, iCount);

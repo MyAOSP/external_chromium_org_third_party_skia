@@ -3,9 +3,11 @@ use_relative_paths = True
 # Dependencies on outside packages.
 #
 deps = {
+  "common": "https://skia.googlesource.com/common.git@ac762a93094a8a45e2793820ababd280766eef2a",
+
   # DEPS using https://chromium.googlesource.com are pulled from chromium @ r205199
   # (see https://chromium.googlesource.com/chromium/chromium/+/c59bfa8ef877f45bfa859669053859857af1d279)
-  "third_party/externals/angle2" : "https://chromium.googlesource.com/angle/angle.git",
+  "third_party/externals/angle2" : "https://chromium.googlesource.com/angle/angle.git@23a8a433529d9db23882c702a29d5e594841563d",
   "third_party/externals/freetype" : "https://skia.googlesource.com/third_party/freetype2.git@VER-2-5-0-1",
   "third_party/externals/gyp" : "https://chromium.googlesource.com/external/gyp.git@3917682a16d5c19ff3576a8be0ffdb3a332954b1",
   "third_party/externals/libjpeg" : "https://chromium.googlesource.com/chromium/deps/libjpeg_turbo.git@82ce8a6d4ebe12a177c0c3597192f2b4f09e81c3",
@@ -16,6 +18,10 @@ deps = {
   # "third_party/externals/v8" : "git://github.com/v8/v8.git@d15b0f0f2099dbd72867f3df70e9aaf5b8afbd2c",
   "third_party/externals/nanomsg": "git://github.com/nanomsg/nanomsg.git@0.4-beta",
 }
+
+recursedeps = [
+  "common",
+]
 
 deps_os = {
   "android": {

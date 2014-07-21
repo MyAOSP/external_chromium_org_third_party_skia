@@ -8,6 +8,7 @@
 #include "GrOvalEffect.h"
 
 #include "gl/GrGLEffect.h"
+#include "gl/GrGLShaderBuilder.h"
 #include "gl/GrGLSL.h"
 #include "GrTBackendEffectFactory.h"
 
@@ -19,7 +20,7 @@ class GLCircleEffect;
 
 class CircleEffect : public GrEffect {
 public:
-    static GrEffectRef* Create(GrEffectEdgeType, const SkPoint& center, SkScalar radius);
+    static GrEffect* Create(GrEffectEdgeType, const SkPoint& center, SkScalar radius);
 
     virtual ~CircleEffect() {};
     static const char* Name() { return "Circle"; }
@@ -49,12 +50,9 @@ private:
     typedef GrEffect INHERITED;
 };
 
-GrEffectRef* CircleEffect::Create(GrEffectEdgeType edgeType,
-                                  const SkPoint& center,
-                                  SkScalar radius) {
+GrEffect* CircleEffect::Create(GrEffectEdgeType edgeType, const SkPoint& center, SkScalar radius) {
     SkASSERT(radius >= 0);
-    return CreateEffectRef(AutoEffectUnref(SkNEW_ARGS(CircleEffect,
-                                                      (edgeType, center, radius))));
+    return SkNEW_ARGS(CircleEffect, (edgeType, center, radius));
 }
 
 void CircleEffect::getConstantColorComponents(GrColor* color, uint32_t* validFlags) const {
@@ -81,10 +79,10 @@ bool CircleEffect::onIsEqual(const GrEffect& other) const {
 
 GR_DEFINE_EFFECT_TEST(CircleEffect);
 
-GrEffectRef* CircleEffect::TestCreate(SkRandom* random,
-                                      GrContext*,
-                                      const GrDrawTargetCaps& caps,
-                                      GrTexture*[]) {
+GrEffect* CircleEffect::TestCreate(SkRandom* random,
+                                   GrContext*,
+                                   const GrDrawTargetCaps& caps,
+                                   GrTexture*[]) {
     SkPoint center;
     center.fX = random->nextRangeScalar(0.f, 1000.f);
     center.fY = random->nextRangeScalar(0.f, 1000.f);
@@ -190,7 +188,7 @@ class GLEllipseEffect;
 
 class EllipseEffect : public GrEffect {
 public:
-    static GrEffectRef* Create(GrEffectEdgeType, const SkPoint& center, SkScalar rx, SkScalar ry);
+    static GrEffect* Create(GrEffectEdgeType, const SkPoint& center, SkScalar rx, SkScalar ry);
 
     virtual ~EllipseEffect() {};
     static const char* Name() { return "Ellipse"; }
@@ -220,13 +218,12 @@ private:
     typedef GrEffect INHERITED;
 };
 
-GrEffectRef* EllipseEffect::Create(GrEffectEdgeType edgeType,
-                                   const SkPoint& center,
-                                   SkScalar rx,
-                                   SkScalar ry) {
+GrEffect* EllipseEffect::Create(GrEffectEdgeType edgeType,
+                                const SkPoint& center,
+                                SkScalar rx,
+                                SkScalar ry) {
     SkASSERT(rx >= 0 && ry >= 0);
-    return CreateEffectRef(AutoEffectUnref(SkNEW_ARGS(EllipseEffect,
-                                                      (edgeType, center, rx, ry))));
+    return SkNEW_ARGS(EllipseEffect, (edgeType, center, rx, ry));
 }
 
 void EllipseEffect::getConstantColorComponents(GrColor* color, uint32_t* validFlags) const {
@@ -253,10 +250,10 @@ bool EllipseEffect::onIsEqual(const GrEffect& other) const {
 
 GR_DEFINE_EFFECT_TEST(EllipseEffect);
 
-GrEffectRef* EllipseEffect::TestCreate(SkRandom* random,
-                                       GrContext*,
-                                       const GrDrawTargetCaps& caps,
-                                       GrTexture*[]) {
+GrEffect* EllipseEffect::TestCreate(SkRandom* random,
+                                    GrContext*,
+                                    const GrDrawTargetCaps& caps,
+                                    GrTexture*[]) {
     SkPoint center;
     center.fX = random->nextRangeScalar(0.f, 1000.f);
     center.fY = random->nextRangeScalar(0.f, 1000.f);
@@ -368,7 +365,7 @@ void GLEllipseEffect::setData(const GrGLUniformManager& uman, const GrDrawEffect
 
 //////////////////////////////////////////////////////////////////////////////
 
-GrEffectRef* GrOvalEffect::Create(GrEffectEdgeType edgeType, const SkRect& oval) {
+GrEffect* GrOvalEffect::Create(GrEffectEdgeType edgeType, const SkRect& oval) {
     if (kHairlineAA_GrEffectEdgeType == edgeType) {
         return NULL;
     }

@@ -5,7 +5,6 @@
  * found in the LICENSE file.
  */
 
-#include "SkBicubicImageFilter.h"
 #include "SkBitmap.h"
 #include "SkBitmapDevice.h"
 #include "SkBitmapSource.h"
@@ -45,7 +44,7 @@ namespace {
 class MatrixTestImageFilter : public SkImageFilter {
 public:
     MatrixTestImageFilter(skiatest::Reporter* reporter, const SkMatrix& expectedMatrix)
-      : SkImageFilter(0), fReporter(reporter), fExpectedMatrix(expectedMatrix) {
+      : SkImageFilter(0, NULL), fReporter(reporter), fExpectedMatrix(expectedMatrix) {
     }
 
     virtual bool onFilterImage(Proxy*, const SkBitmap& src, const Context& ctx,
@@ -57,7 +56,7 @@ public:
     SK_DECLARE_PUBLIC_FLATTENABLE_DESERIALIZATION_PROCS(MatrixTestImageFilter)
 
 protected:
-    explicit MatrixTestImageFilter(SkReadBuffer& buffer) : SkImageFilter(0) {
+    explicit MatrixTestImageFilter(SkReadBuffer& buffer) : SkImageFilter(0, NULL) {
         fReporter = static_cast<skiatest::Reporter*>(buffer.readFunctionPtr());
         buffer.readMatrix(&fExpectedMatrix);
     }
@@ -210,22 +209,6 @@ DEF_TEST(ImageFilter, reporter) {
             SkRect r = SkRect::MakeWH(SkIntToScalar(kBitmapSize),
                                       SkIntToScalar(kBitmapSize));
             canvas.drawRect(r, paint);
-        }
-
-        {
-            // This tests for scale bringing width to 0
-            SkSize scale = SkSize::Make(-0.001f, SK_Scalar1);
-            SkAutoTUnref<SkImageFilter> bmSrc(SkBitmapSource::Create(bitmap));
-            SkAutoTUnref<SkBicubicImageFilter> bicubic(
-                SkBicubicImageFilter::CreateMitchell(scale, bmSrc));
-            SkBitmapDevice device(bitmap);
-            SkDeviceImageFilterProxy proxy(&device);
-            SkIPoint loc = SkIPoint::Make(0, 0);
-            // An empty input should early return and return false
-            SkAutoTUnref<SkImageFilter::Cache> cache(SkImageFilter::Cache::Create(2));
-            SkImageFilter::Context ctx(SkMatrix::I(), SkIRect::MakeEmpty(), cache.get());
-            REPORTER_ASSERT(reporter,
-                            !bicubic->filterImage(&proxy, bitmap, ctx, &result, &loc));
         }
     }
 }
@@ -426,6 +409,70 @@ DEF_TEST(ImageFilterDrawTiled, reporter) {
     }
 }
 
+static void drawBlurredRect(SkCanvas* canvas) {
+    SkAutoTUnref<SkImageFilter> filter(SkBlurImageFilter::Create(SkIntToScalar(8), 0));
+    SkPaint filterPaint;
+    filterPaint.setColor(SK_ColorWHITE);
+    filterPaint.setImageFilter(filter);
+    canvas->saveLayer(NULL, &filterPaint);
+    SkPaint whitePaint;
+    whitePaint.setColor(SK_ColorWHITE);
+    canvas->drawRect(SkRect::Make(SkIRect::MakeWH(4, 4)), whitePaint);
+    canvas->restore();
+}
+
+static void drawPictureClipped(SkCanvas* canvas, const SkRect& clipRect, const SkPicture* picture) {
+    canvas->save();
+    canvas->clipRect(clipRect);
+    canvas->drawPicture(picture);
+    canvas->restore();
+}
+
+DEF_TEST(ImageFilterDrawTiledBlurRTree, reporter) {
+    // Check that the blur filter when recorded with RTree acceleration,
+    // and drawn tiled (with subsequent clip rects) exactly
+    // matches the same filter drawn with without RTree acceleration.
+    // This tests that the "bleed" from the blur into the otherwise-blank
+    // tiles is correctly rendered.
+    // Tests pass by not asserting.
+
+    int width = 16, height = 8;
+    SkBitmap result1, result2;
+    result1.allocN32Pixels(width, height);
+    result2.allocN32Pixels(width, height);
+    SkCanvas canvas1(result1);
+    SkCanvas canvas2(result2);
+    int tileSize = 8;
+
+    canvas1.clear(0);
+    canvas2.clear(0);
+
+    SkRTreeFactory factory;
+
+    SkPictureRecorder recorder1, recorder2;
+    // The only difference between these two pictures is that one has RTree aceleration.
+    SkCanvas* recordingCanvas1 = recorder1.beginRecording(width, height, NULL, 0);
+    SkCanvas* recordingCanvas2 = recorder2.beginRecording(width, height, &factory, 0);
+    drawBlurredRect(recordingCanvas1);
+    drawBlurredRect(recordingCanvas2);
+    SkAutoTUnref<SkPicture> picture1(recorder1.endRecording());
+    SkAutoTUnref<SkPicture> picture2(recorder2.endRecording());
+    for (int y = 0; y < height; y += tileSize) {
+        for (int x = 0; x < width; x += tileSize) {
+            SkRect tileRect = SkRect::Make(SkIRect::MakeXYWH(x, y, tileSize, tileSize));
+            drawPictureClipped(&canvas1, tileRect, picture1);
+            drawPictureClipped(&canvas2, tileRect, picture2);
+        }
+    }
+    for (int y = 0; y < height; y++) {
+        int diffs = memcmp(result1.getAddr32(0, y), result2.getAddr32(0, y), result1.rowBytes());
+        REPORTER_ASSERT(reporter, !diffs);
+        if (diffs) {
+            break;
+        }
+    }
+}
+
 DEF_TEST(ImageFilterMatrixConvolution, reporter) {
     // Check that a 1x3 filter does not cause a spurious assert.
     SkScalar kernel[3] = {
@@ -491,7 +538,7 @@ DEF_TEST(ImageFilterCropRect, reporter) {
     test_crop_rects(&device, reporter);
 }
 
-DEF_TEST(ImageFilterMatrixTest, reporter) {
+DEF_TEST(ImageFilterMatrix, reporter) {
     SkBitmap temp;
     temp.allocN32Pixels(100, 100);
     SkBitmapDevice device(temp);
@@ -521,8 +568,7 @@ DEF_TEST(ImageFilterMatrixTest, reporter) {
     canvas.drawPicture(picture);
 }
 
-DEF_TEST(ImageFilterPictureImageFilterTest, reporter) {
-
+DEF_TEST(ImageFilterPictureImageFilter, reporter) {
     SkRTreeFactory factory;
     SkPictureRecorder recorder;
     SkCanvas* recordingCanvas = recorder.beginRecording(1, 1, &factory, 0);
@@ -581,8 +627,7 @@ DEF_TEST(ImageFilterPictureImageFilterTest, reporter) {
     REPORTER_ASSERT(reporter, pixel != SK_ColorGREEN);
 }
 
-DEF_TEST(ImageFilterEmptySaveLayerTest, reporter) {
-
+DEF_TEST(ImageFilterEmptySaveLayer, reporter) {
     // Even when there's an empty saveLayer()/restore(), ensure that an image
     // filter or color filter which affects transparent black still draws.
 

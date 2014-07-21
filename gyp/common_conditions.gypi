@@ -86,7 +86,6 @@
               'VCCLCompilerTool': {
                 'DebugInformationFormat': '3',      # programDatabase (/Zi)
                 'Optimization': '<(skia_release_optimization_level)',
-                'WholeProgramOptimization': 'true', #/GL
                # Changing the floating point model requires rebaseling gm images
                #'FloatingPointModel': '2',          # fast (/fp:fast)
                 'FavorSizeOrSpeed': '1',            # speed (/Ot)
@@ -97,10 +96,6 @@
               },
               'VCLinkerTool': {
                 'GenerateDebugInformation': 'true', # /DEBUG
-                'LinkTimeCodeGeneration': '1',      # useLinkTimeCodeGeneration /LTCG
-              },
-              'VCLibrarianTool': {
-                'LinkTimeCodeGeneration': 'true',   # useLinkTimeCodeGeneration /LTCG
               },
             },
           },
@@ -154,6 +149,23 @@
               },
             },
           }],
+          [ 'skia_win_ltcg', {
+            'configurations': {
+              'Release': {
+                'msvs_settings': {
+                  'VCCLCompilerTool': {
+                    'WholeProgramOptimization': 'true', #/GL
+                  },
+                  'VCLinkerTool': {
+                    'LinkTimeCodeGeneration': '1',      # useLinkTimeCodeGeneration /LTCG
+                  },
+                  'VCLibrarianTool': {
+                    'LinkTimeCodeGeneration': 'true',   # useLinkTimeCodeGeneration /LTCG
+                  },
+                },
+              },
+            },
+          }],
         ],
       },
     ],
@@ -171,6 +183,7 @@
           '-Winit-self',
           '-Wpointer-arith',
 
+          '-Wno-c++11-extensions',
           '-Wno-unused-parameter',
         ],
         'cflags_cc': [
@@ -179,10 +192,24 @@
           '-Wno-invalid-offsetof',  # GCC <4.6 is old-school strict about what is POD.
         ],
         'conditions': [
-          [ 'skia_android_framework==0', {
-            'cflags': [
-              # This flag is not supported by Android build system.
-              '-Wno-c++11-extensions',
+          [ 'skia_os != "chromeos"', {
+            'conditions': [
+              [ 'skia_arch_width == 64 and skia_arch_type == "x86"', {
+                'cflags': [
+                  '-m64',
+                ],
+                'ldflags': [
+                  '-m64',
+                ],
+              }],
+              [ 'skia_arch_width == 32 and skia_arch_type == "x86"', {
+                'cflags': [
+                  '-m32',
+                ],
+                'ldflags': [
+                  '-m32',
+                ],
+              }],
             ],
           }],
           [ 'skia_warnings_as_errors', {
@@ -260,13 +287,17 @@
                     'cflags': [
                       '-mdsp',
                     ],
+                    'defines': [
+                      'SK_MIPS_HAS_DSP',
+                    ],
                   }],
                   [ 'mips_dsp == 2', {
                     'cflags': [
                       '-mdspr2',
                     ],
                     'defines': [
-                      '__MIPS_HAVE_DSPR2',
+                      'SK_MIPS_HAS_DSP',
+                      'SK_MIPS_HAS_DSPR2',
                     ],
                   }],
                 ],
@@ -305,8 +336,6 @@
         '-mthumb',
         '-mfpu=neon',
         '-mfloat-abi=softfp',
-        # This flag is not supported by Android build system.
-        '-Wno-c++11-extensions',
         '-fno-exceptions',
         '-fstrict-aliasing',
         # Remove flags to turn on warnings, since most people building Android
@@ -332,20 +361,10 @@
         # Optimizations for chromium (m30)
         'GR_GL_CUSTOM_SETUP_HEADER "gl/GrGLConfig_chrome.h"',
         'IGNORE_ROT_AA_RECT_OPT',
-        # Disable this check because it is too strict for some chromium-specific
-        # subclasses of SkPixelRef. See bug: crbug.com/171776.
-        'SK_DISABLE_PIXELREF_LOCKCOUNT_BALANCE_CHECK',
         'SkLONGLONG int64_t',
         'SK_DEFAULT_FONT_CACHE_LIMIT   (768 * 1024)',
-        'SK_ATOMICS_PLATFORM_H "../../src/ports/SkAtomics_sync.h"',
-        'SK_MUTEX_PLATFORM_H "../../src/ports/SkMutex_pthread.h"',
-        # Still need to switch Android to the new name for N32.
-        'kNative_8888_SkColorType kN32_SkColorType',
-        # Needed until we fix skbug.com/2440.
-        'SK_SUPPORT_LEGACY_CLIPTOLAYERFLAG',
         # Transitional, for deprecated SkCanvas::SaveFlags methods.
         'SK_ATTR_DEPRECATED=SK_NOTHING_ARG1',
-        'SK_SUPPORT_LEGACY_SHADER_LOCALMATRIX',
         'SK_DEFAULT_GLOBAL_DISCARDABLE_MEMORY_POOL_SIZE (512 * 1024)',
         'SK_IGNORE_ETC1_SUPPORT',
         # Defines from skia_for_android_framework_defines.gypi
@@ -410,26 +429,6 @@
               ],
             },
           }],
-          [ 'skia_os != "chromeos"', {
-            'conditions': [
-              [ 'skia_arch_width == 64 and skia_arch_type == "x86"', {
-                'cflags': [
-                  '-m64',
-                ],
-                'ldflags': [
-                  '-m64',
-                ],
-              }],
-              [ 'skia_arch_width == 32 and skia_arch_type == "x86"', {
-                'cflags': [
-                  '-m32',
-                ],
-                'ldflags': [
-                  '-m32',
-                ],
-              }],
-            ],
-          }],
           # Enable asan, tsan, etc.
           [ 'skia_sanitizer', {
             'cflags': [
@@ -440,7 +439,7 @@
             ],
             'conditions' : [
               [ 'skia_sanitizer == "thread"', {
-                'defines': [ 'DYNAMIC_ANNOTATIONS_ENABLED=1' ],
+                'defines': [ 'SK_DYNAMIC_ANNOTATIONS_ENABLED=1' ],
                 'cflags': [ '-fPIC' ],
                 'target_conditions': [
                   [ '_type == "executable"', {
@@ -462,9 +461,16 @@
             ],
           }],
           [ 'skia_clang_build', {
+            'cflags_cc': [
+                # Build in C++11 mode to make sure we'll have an easy time switching.
+                '-std=c++11',
+                '-Wno-unknown-warning-option',  # Allows unknown warnings.
+                '-Wno-deprecated',              # From Qt, via debugger (older Clang).
+                '-Wno-deprecated-register',     # From Qt, via debugger (newer Clang).
+            ],
             'cflags': [
-              # Extra warnings we like but that only Clang knows about.
-              '-Wstring-conversion',
+                # Extra warnings we like but that only Clang knows about.
+                '-Wstring-conversion',
             ],
             'cflags!': [
                 '-mfpmath=sse',  # Clang doesn't need to be told this, and sometimes gets confused.
@@ -655,6 +661,8 @@
             'defines': [
               'SKIA_DLL',
               'SKIA_IMPLEMENTATION=1',
+              # Needed until we fix skbug.com/2440.
+              'SK_SUPPORT_LEGACY_CLIPTOLAYERFLAG',
             ],
           }],
           [ 'skia_profile_enabled == 1', {
@@ -676,6 +684,10 @@
       'defines': [
         # add flags here (e.g. SK_SUPPORT_LEGACY_...) needed by moz2d
       ],
+    }],
+
+    [ 'skia_crash_handler', {
+      'defines': [ 'SK_CRASH_HANDLER' ],
     }],
 
   ], # end 'conditions'

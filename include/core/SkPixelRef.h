@@ -9,9 +9,9 @@
 #define SkPixelRef_DEFINED
 
 #include "SkBitmap.h"
+#include "SkDynamicAnnotations.h"
 #include "SkRefCnt.h"
 #include "SkString.h"
-#include "SkFlattenable.h"
 #include "SkImageInfo.h"
 #include "SkTDArray.h"
 
@@ -46,7 +46,7 @@ class GrTexture;
 
     This class can be shared/accessed between multiple threads.
 */
-class SK_API SkPixelRef : public SkFlattenable {
+class SK_API SkPixelRef : public SkRefCnt {
 public:
     SK_DECLARE_INST_COUNT(SkPixelRef)
 
@@ -250,8 +250,6 @@ public:
     virtual void globalUnref();
 #endif
 
-    SK_DEFINE_FLATTENABLE_TYPE(SkPixelRef)
-
     // Register a listener that may be called the next time our generation ID changes.
     //
     // We'll only call the listener if we're confident that we are the only SkPixelRef with this
@@ -322,10 +320,6 @@ protected:
     */
     SkBaseMutex* mutex() const { return fMutex; }
 
-    // serialization
-    SkPixelRef(SkReadBuffer&, SkBaseMutex*);
-    virtual void flatten(SkWriteBuffer&) const SK_OVERRIDE;
-
     // only call from constructor. Flags this to always be locked, removing
     // the need to grab the mutex and call onLockPixels/onUnlockPixels.
     // Performance tweak to avoid those calls (esp. in multi-thread use case).
@@ -341,8 +335,8 @@ private:
     LockRec         fRec;
     int             fLockCount;
 
-    mutable uint32_t fGenerationID;
-    mutable bool     fUniqueGenerationID;
+    mutable SkTRacy<uint32_t> fGenerationID;
+    mutable SkTRacy<bool>     fUniqueGenerationID;
 
     SkTDArray<GenIDChangeListener*> fGenIDChangeListeners;  // pointers are owned
 
@@ -363,7 +357,7 @@ private:
     friend class SkBitmap;  // only for cloneGenID
     void cloneGenID(const SkPixelRef&);
 
-    typedef SkFlattenable INHERITED;
+    typedef SkRefCnt INHERITED;
 };
 
 class SkPixelRefFactory : public SkRefCnt {
@@ -374,7 +368,7 @@ public:
      *  the pixelref will ref() the colortable.
      *  On failure return NULL.
      */
-    virtual SkPixelRef* create(const SkImageInfo&, SkColorTable*) = 0;
+    virtual SkPixelRef* create(const SkImageInfo&, size_t rowBytes, SkColorTable*) = 0;
 };
 
 #endif

@@ -7,6 +7,7 @@
 
 #include "GrSimpleTextureEffect.h"
 #include "gl/GrGLEffect.h"
+#include "gl/GrGLShaderBuilder.h"
 #include "gl/GrGLSL.h"
 #include "gl/GrGLTexture.h"
 #include "GrTBackendEffectFactory.h"
@@ -51,10 +52,10 @@ const GrBackendEffectFactory& GrSimpleTextureEffect::getFactory() const {
 
 GR_DEFINE_EFFECT_TEST(GrSimpleTextureEffect);
 
-GrEffectRef* GrSimpleTextureEffect::TestCreate(SkRandom* random,
-                                               GrContext*,
-                                               const GrDrawTargetCaps&,
-                                               GrTexture* textures[]) {
+GrEffect* GrSimpleTextureEffect::TestCreate(SkRandom* random,
+                                            GrContext*,
+                                            const GrDrawTargetCaps&,
+                                            GrTexture* textures[]) {
     int texIdx = random->nextBool() ? GrEffectUnitTest::kSkiaPMTextureIdx :
                                       GrEffectUnitTest::kAlphaTextureIdx;
     static const SkShader::TileMode kTileModes[] = {

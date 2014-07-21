@@ -8,6 +8,7 @@
 #include "SkImageFilter.h"
 
 #include "SkBitmap.h"
+#include "SkChecksum.h"
 #include "SkDevice.h"
 #include "SkReadBuffer.h"
 #include "SkWriteBuffer.h"
@@ -19,6 +20,55 @@
 #include "SkGrPixelRef.h"
 #include "SkGr.h"
 #endif
+
+SkImageFilter::Common::~Common() {
+    for (int i = 0; i < fInputs.count(); ++i) {
+        SkSafeUnref(fInputs[i]);
+    }
+}
+
+void SkImageFilter::Common::allocInputs(int count) {
+    const size_t size = count * sizeof(SkImageFilter*);
+    fInputs.reset(count);
+    sk_bzero(fInputs.get(), size);
+}
+
+void SkImageFilter::Common::detachInputs(SkImageFilter** inputs) {
+    const size_t size = fInputs.count() * sizeof(SkImageFilter*);
+    memcpy(inputs, fInputs.get(), size);
+    sk_bzero(fInputs.get(), size);
+}
+
+bool SkImageFilter::Common::unflatten(SkReadBuffer& buffer, int expectedCount) {
+    int count = buffer.readInt();
+    if (expectedCount < 0) {    // means the caller doesn't care how many
+        expectedCount = count;
+    }
+    if (!buffer.validate(count == expectedCount)) {
+        return false;
+    }
+
+    this->allocInputs(count);
+    for (int i = 0; i < count; i++) {
+        if (buffer.readBool()) {
+            fInputs[i] = buffer.readImageFilter();
+        }
+        if (!buffer.isValid()) {
+            return false;
+        }
+    }
+    SkRect rect;
+    buffer.readRect(&rect);
+    if (!buffer.isValid() || !buffer.validate(SkIsValidRect(rect))) {
+        return false;
+    }
+    
+    uint32_t flags = buffer.readUInt();
+    fCropRect = CropRect(rect, flags);
+    return buffer.isValid();
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
 
 SkImageFilter::Cache* gExternalCache;
 
@@ -32,23 +82,6 @@ SkImageFilter::SkImageFilter(int inputCount, SkImageFilter** inputs, const CropR
     }
 }
 
-SkImageFilter::SkImageFilter(SkImageFilter* input, const CropRect* cropRect)
-  : fInputCount(1),
-    fInputs(new SkImageFilter*[1]),
-    fCropRect(cropRect ? *cropRect : CropRect(SkRect(), 0x0)) {
-    fInputs[0] = input;
-    SkSafeRef(fInputs[0]);
-}
-
-SkImageFilter::SkImageFilter(SkImageFilter* input1, SkImageFilter* input2, const CropRect* cropRect)
-  : fInputCount(2), fInputs(new SkImageFilter*[2]),
-    fCropRect(cropRect ? *cropRect : CropRect(SkRect(), 0x0)) {
-    fInputs[0] = input1;
-    fInputs[1] = input2;
-    SkSafeRef(fInputs[0]);
-    SkSafeRef(fInputs[1]);
-}
-
 SkImageFilter::~SkImageFilter() {
     for (int i = 0; i < fInputCount; i++) {
         SkSafeUnref(fInputs[i]);
@@ -57,26 +90,12 @@ SkImageFilter::~SkImageFilter() {
 }
 
 SkImageFilter::SkImageFilter(int inputCount, SkReadBuffer& buffer) {
-    fInputCount = buffer.readInt();
-    if (buffer.validate((fInputCount >= 0) && ((inputCount < 0) || (fInputCount == inputCount)))) {
-        fInputs = new SkImageFilter*[fInputCount];
-        for (int i = 0; i < fInputCount; i++) {
-            if (buffer.readBool()) {
-                fInputs[i] = buffer.readImageFilter();
-            } else {
-                fInputs[i] = NULL;
-            }
-            if (!buffer.isValid()) {
-                fInputCount = i; // Do not use fInputs past that point in the destructor
-                break;
-            }
-        }
-        SkRect rect;
-        buffer.readRect(&rect);
-        if (buffer.isValid() && buffer.validate(SkIsValidRect(rect))) {
-            uint32_t flags = buffer.readUInt();
-            fCropRect = CropRect(rect, flags);
-        }
+    Common common;
+    if (common.unflatten(buffer, inputCount)) {
+        fCropRect = common.cropRect();
+        fInputCount = common.inputCount();
+        fInputs = SkNEW_ARRAY(SkImageFilter*, fInputCount);
+        common.detachInputs(fInputs);
     } else {
         fInputCount = 0;
         fInputs = NULL;
@@ -196,7 +215,7 @@ bool SkImageFilter::filterImageGPU(Proxy* proxy, const SkBitmap& src, const Cont
     am.setIdentity(context);
     GrContext::AutoRenderTarget art(context, dst.texture()->asRenderTarget());
     GrContext::AutoClip acs(context, dstRect);
-    GrEffectRef* effect;
+    GrEffect* effect;
     offset->fX = bounds.left();
     offset->fY = bounds.top();
     bounds.offset(-srcOffset);
@@ -204,9 +223,8 @@ bool SkImageFilter::filterImageGPU(Proxy* proxy, const SkBitmap& src, const Cont
     matrix.postTranslate(SkIntToScalar(-bounds.left()), SkIntToScalar(-bounds.top()));
     this->asNewEffect(&effect, srcTexture, matrix, bounds);
     SkASSERT(effect);
-    SkAutoUnref effectRef(effect);
     GrPaint paint;
-    paint.addColorEffect(effect);
+    paint.addColorEffect(effect)->unref();
     context->drawRectToRect(paint, dstRect, srcRect);
 
     SkAutoTUnref<GrTexture> resultTex(dst.detach());
@@ -299,7 +317,7 @@ bool SkImageFilter::onFilterBounds(const SkIRect& src, const SkMatrix& ctm,
     return true;
 }
 
-bool SkImageFilter::asNewEffect(GrEffectRef**, GrTexture*, const SkMatrix&, const SkIRect&) const {
+bool SkImageFilter::asNewEffect(GrEffect**, GrTexture*, const SkMatrix&, const SkIRect&) const {
     return false;
 }
 
@@ -352,34 +370,12 @@ bool SkImageFilter::getInputResultGPU(SkImageFilter::Proxy* proxy,
 }
 #endif
 
-static uint32_t compute_hash(const uint32_t* data, int count) {
-    uint32_t hash = 0;
-
-    for (int i = 0; i < count; ++i) {
-        uint32_t k = data[i];
-        k *= 0xcc9e2d51;
-        k = (k << 15) | (k >> 17);
-        k *= 0x1b873593;
-
-        hash ^= k;
-        hash = (hash << 13) | (hash >> 19);
-        hash *= 5;
-        hash += 0xe6546b64;
-    }
-
-    //    hash ^= size;
-    hash ^= hash >> 16;
-    hash *= 0x85ebca6b;
-    hash ^= hash >> 13;
-    hash *= 0xc2b2ae35;
-    hash ^= hash >> 16;
-
-    return hash;
-}
-
 class CacheImpl : public SkImageFilter::Cache {
 public:
-    explicit CacheImpl(int minChildren) : fMinChildren(minChildren) {}
+    explicit CacheImpl(int minChildren) : fMinChildren(minChildren) {
+        SkASSERT(fMinChildren <= 2);
+    }
+
     virtual ~CacheImpl();
     bool get(const SkImageFilter* key, SkBitmap* result, SkIPoint* offset) SK_OVERRIDE;
     void set(const SkImageFilter* key, const SkBitmap& result, const SkIPoint& offset) SK_OVERRIDE;
@@ -396,7 +392,7 @@ private:
             return v.fKey;
         }
         static uint32_t Hash(Key key) {
-            return compute_hash(reinterpret_cast<const uint32_t*>(&key), sizeof(Key) / sizeof(uint32_t));
+            return SkChecksum::Murmur3(reinterpret_cast<const uint32_t*>(&key), sizeof(Key));
         }
     };
     SkTDynamicHash<Value, Key> fData;
@@ -422,7 +418,10 @@ void CacheImpl::remove(const SkImageFilter* key) {
 }
 
 void CacheImpl::set(const SkImageFilter* key, const SkBitmap& result, const SkIPoint& offset) {
-    if (key->getRefCnt() >= fMinChildren) {
+    if (fMinChildren < 2 || !key->unique()) {
+        // We take !key->unique() as a signal that there are probably at least 2 refs on the key,
+        // meaning this filter probably has at least two children and is worth caching when
+        // fMinChildren is 2.  If fMinChildren is less than two, we'll just always cache.
         fData.add(new Value(key, result, offset));
     }
 }

@@ -4,6 +4,7 @@
 
 DEFINE_bool(cpu, true, "Master switch for running CPU-bound work.");
 DEFINE_bool(gpu, true, "Master switch for running GPU-bound work.");
+DEFINE_bool(resetGpuContext, true, "Reset the GrContext before running each task.");
 
 DECLARE_bool(dryRun);
 
@@ -73,6 +74,9 @@ void GpuTask::run(GrContextFactory& factory) {
         this->start();
         if (!FLAGS_dryRun) this->draw(&factory);
         this->finish();
+        if (FLAGS_resetGpuContext) {
+            factory.destroyContexts();
+        }
     }
     SkDELETE(this);
 }

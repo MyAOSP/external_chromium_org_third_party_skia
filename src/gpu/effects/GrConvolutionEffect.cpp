@@ -7,6 +7,7 @@
 
 #include "GrConvolutionEffect.h"
 #include "gl/GrGLEffect.h"
+#include "gl/GrGLShaderBuilder.h"
 #include "gl/GrGLSL.h"
 #include "gl/GrGLTexture.h"
 #include "GrTBackendEffectFactory.h"
@@ -211,10 +212,10 @@ bool GrConvolutionEffect::onIsEqual(const GrEffect& sBase) const {
 
 GR_DEFINE_EFFECT_TEST(GrConvolutionEffect);
 
-GrEffectRef* GrConvolutionEffect::TestCreate(SkRandom* random,
-                                             GrContext*,
-                                             const GrDrawTargetCaps&,
-                                             GrTexture* textures[]) {
+GrEffect* GrConvolutionEffect::TestCreate(SkRandom* random,
+                                          GrContext*,
+                                          const GrDrawTargetCaps&,
+                                          GrTexture* textures[]) {
     int texIdx = random->nextBool() ? GrEffectUnitTest::kSkiaPMTextureIdx :
                                       GrEffectUnitTest::kAlphaTextureIdx;
     Direction dir = random->nextBool() ? kX_Direction : kY_Direction;

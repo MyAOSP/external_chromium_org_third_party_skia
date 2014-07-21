@@ -28,10 +28,10 @@ class GrFontPurgeListener;
  */
 class GrTextStrike {
 public:
-    GrTextStrike(GrFontCache*, const GrKey* fontScalerKey, GrMaskFormat, GrAtlasMgr*);
+    GrTextStrike(GrFontCache*, const GrFontDescKey* fontScalerKey, GrMaskFormat, GrAtlas*);
     ~GrTextStrike();
 
-    const GrKey* getFontScalerKey() const { return fFontScalerKey; }
+    const GrFontDescKey* getFontScalerKey() const { return fFontScalerKey; }
     GrFontCache* getFontCache() const { return fFontCache; }
     GrMaskFormat getMaskFormat() const { return fMaskFormat; }
 
@@ -55,15 +55,15 @@ public:
 private:
     class Key;
     GrTHashTable<GrGlyph, Key, 7> fCache;
-    const GrKey* fFontScalerKey;
+    const GrFontDescKey* fFontScalerKey;
     GrTAllocPool<GrGlyph> fPool;
 
     GrFontCache*    fFontCache;
-    GrAtlasMgr*     fAtlasMgr;
+    GrAtlas*        fAtlas;
     GrMaskFormat    fMaskFormat;
     bool            fUseDistanceField;
 
-    GrAtlas         fAtlas;
+    GrAtlas::ClientPlotUsage fPlotUsage;
 
     GrGlyph* generateGlyph(GrGlyph::PackedID packed, GrFontScaler* scaler);
 
@@ -91,8 +91,8 @@ public:
 
     void updateTextures() {
         for (int i = 0; i < kAtlasCount; ++i) {
-            if (fAtlasMgr[i]) {
-                fAtlasMgr[i]->uploadPlotsToTexture();
+            if (fAtlases[i]) {
+                fAtlases[i]->uploadPlotsToTexture();
             }
         }
     }
@@ -124,7 +124,7 @@ private:
     GrTextStrike* fTail;
 
     GrGpu*      fGpu;
-    GrAtlasMgr* fAtlasMgr[kAtlasCount];
+    GrAtlas*    fAtlases[kAtlasCount];
 
     GrTextStrike* generateStrike(GrFontScaler*, const Key&);
     inline void detachStrikeFromList(GrTextStrike*);

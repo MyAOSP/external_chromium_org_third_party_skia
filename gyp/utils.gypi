@@ -9,11 +9,9 @@
     'sources': [
         # Classes for a threadpool.
         '<(skia_include_path)/utils/SkCondVar.h',
-        '<(skia_include_path)/utils/SkCountdown.h',
         '<(skia_include_path)/utils/SkRunnable.h',
         '<(skia_include_path)/utils/SkThreadPool.h',
         '<(skia_src_path)/utils/SkCondVar.cpp',
-        '<(skia_src_path)/utils/SkCountdown.cpp',
 
         '<(skia_include_path)/utils/SkBoundaryPatch.h',
         '<(skia_include_path)/utils/SkFrontBufferedStream.h',
@@ -121,5 +119,7 @@
         #testing
         '<(skia_src_path)/fonts/SkGScalerContext.cpp',
         '<(skia_src_path)/fonts/SkGScalerContext.h',
+        '<(skia_src_path)/fonts/SkTestScalerContext.cpp',
+        '<(skia_src_path)/fonts/SkTestScalerContext.h',
     ],
 }

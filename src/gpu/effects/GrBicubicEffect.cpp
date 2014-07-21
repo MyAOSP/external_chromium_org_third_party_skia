@@ -1,4 +1,13 @@
+/*
+ * Copyright 2014 Google Inc.
+ *
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file.
+ */
+
 #include "GrBicubicEffect.h"
+
+#include "gl/GrGLShaderBuilder.h"
 
 #define DS(x) SkDoubleToScalar(x)
 
@@ -165,10 +174,10 @@ void GrBicubicEffect::getConstantColorComponents(GrColor* color, uint32_t* valid
 
 GR_DEFINE_EFFECT_TEST(GrBicubicEffect);
 
-GrEffectRef* GrBicubicEffect::TestCreate(SkRandom* random,
-                                         GrContext* context,
-                                         const GrDrawTargetCaps&,
-                                         GrTexture* textures[]) {
+GrEffect* GrBicubicEffect::TestCreate(SkRandom* random,
+                                      GrContext* context,
+                                      const GrDrawTargetCaps&,
+                                      GrTexture* textures[]) {
     int texIdx = random->nextBool() ? GrEffectUnitTest::kSkiaPMTextureIdx :
                                       GrEffectUnitTest::kAlphaTextureIdx;
     SkScalar coefficients[16];

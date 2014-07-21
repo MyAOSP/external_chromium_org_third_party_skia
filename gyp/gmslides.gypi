@@ -18,7 +18,6 @@
     '../gm/arcofzorro.cpp',
     '../gm/arithmode.cpp',
     '../gm/beziereffects.cpp',
-    '../gm/bicubicfilter.cpp',
     '../gm/bigblurs.cpp',
     '../gm/bigmatrix.cpp',
     '../gm/bigtext.cpp',
@@ -37,7 +36,6 @@
     '../gm/blurquickreject.cpp',
     '../gm/blurrect.cpp',
     '../gm/blurroundrect.cpp',
-    '../gm/canvasstate.cpp',
     '../gm/circles.cpp',
     '../gm/circularclips.cpp',
     '../gm/clippedbitmapshaders.cpp',
@@ -83,6 +81,7 @@
     '../gm/gammatext.cpp',
     '../gm/getpostextpath.cpp',
     '../gm/giantbitmap.cpp',
+    '../gm/glyph_pos.cpp',
     '../gm/gradients.cpp',
     '../gm/gradients_2pt_conical.cpp',
     '../gm/gradients_no_texture.cpp',
@@ -183,6 +182,7 @@
     '../gm/xfermodes.cpp',
     '../gm/xfermodes2.cpp',
     '../gm/xfermodes3.cpp',
+    '../gm/yuvtorgbeffect.cpp',
 
     # Files needed by particular GMs
     '../src/utils/debugger/SkDrawCommand.h',

@@ -11,6 +11,7 @@
 
 #include "SkFontConfigParser_android.h"
 #include "SkFontConfigTypeface.h"
+#include "SkFontHost_FreeType_common.h"
 #include "SkFontMgr.h"
 #include "SkGlyphCache.h"
 #include "SkPaint.h"
@@ -52,7 +53,7 @@ typedef int32_t FamilyRecID;
 
 // used to record our notion of the pre-existing fonts
 struct FontRec {
-    SkRefPtr<SkTypeface> fTypeface;
+    SkAutoTUnref<SkTypeface> fTypeface;
     SkString fFileName;
     SkTypeface::Style fStyle;
     bool fIsValid;
@@ -114,8 +115,8 @@ private:
     FallbackFontList* getCurrentLocaleFallbackFontList();
     FallbackFontList* findFallbackFontList(const SkLanguage& lang, bool isOriginal = true);
 
-    SkTArray<FontRec> fFonts;
-    SkTArray<FamilyRec> fFontFamilies;
+    SkTArray<FontRec, true> fFonts;
+    SkTArray<FamilyRec, true> fFontFamilies;
     SkTDict<FamilyRecID> fFamilyNameDict;
     FamilyRecID fDefaultFamilyRecID;
 
@@ -155,13 +156,14 @@ static SkFontConfigInterfaceAndroid* getSingletonInterface() {
     return gFontConfigInterface;
 }
 
-SkFontConfigInterface* SkFontConfigInterface::GetSingletonDirectInterface() {
+SkFontConfigInterface* SkFontConfigInterface::GetSingletonDirectInterface(SkBaseMutex*) {
+    // Doesn't need passed-in mutex because getSingletonInterface() uses one
     return getSingletonInterface();
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 
-static bool has_font(const SkTArray<FontRec>& array, const SkString& filename) {
+static bool has_font(const SkTArray<FontRec, true>& array, const SkString& filename) {
     for (int i = 0; i < array.count(); i++) {
         if (array[i].fFileName == filename) {
             return true;
@@ -194,10 +196,6 @@ static void insert_into_name_dict(SkTDict<FamilyRecID>& familyNameDict,
         familyNameDict.set(tolc.lc(), familyRecID);
     }
 }
-
-// Defined in SkFontHost_FreeType.cpp
-bool find_name_and_attributes(SkStream* stream, SkString* name,
-                              SkTypeface::Style* style, bool* isFixedWidth);
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -240,8 +238,9 @@ SkFontConfigInterfaceAndroid::SkFontConfigInterfaceAndroid(SkTDArray<FontFamily*
             if (stream.get() != NULL) {
                 bool isFixedWidth;
                 SkString name;
-                fontRec.fIsValid = find_name_and_attributes(stream.get(), &name,
-                                                            &fontRec.fStyle, &isFixedWidth);
+                fontRec.fIsValid = SkTypeface_FreeType::ScanFont(stream.get(), 0,
+                                                                 &name, &fontRec.fStyle,
+                                                                 &isFixedWidth);
             } else {
                 if (!family->fIsFallbackFont) {
                     SkDebugf("---- failed to open <%s> as a font\n", filename.c_str());
@@ -504,7 +503,7 @@ SkTypeface* SkFontConfigInterfaceAndroid::getTypefaceForFontRec(FontRecID fontRe
         }
 
         // store the result for subsequent lookups
-        fontRec.fTypeface = face;
+        fontRec.fTypeface.reset(face);
     }
     SkASSERT(face);
     return face;

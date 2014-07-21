@@ -29,7 +29,9 @@
 #include "SkMaskFilter.h"
 #include "SkPathEffect.h"
 #include "SkPicture.h"
-#include "SkPicturePlayback.h"
+#include "SkPictureData.h"
+#include "SkPictureRangePlayback.h"
+#include "SkPictureReplacementPlayback.h"
 #include "SkRRect.h"
 #include "SkStroke.h"
 #include "SkSurface.h"
@@ -127,16 +129,6 @@ public:
 
 ///////////////////////////////////////////////////////////////////////////////
 
-/*
- * GrRenderTarget does not know its opaqueness, only its config, so we have
- * to make conservative guesses when we return an "equivalent" bitmap.
- */
-static SkBitmap make_bitmap(GrContext* context, GrRenderTarget* renderTarget) {
-    SkBitmap bitmap;
-    bitmap.setInfo(renderTarget->info());
-    return bitmap;
-}
-
 SkGpuDevice* SkGpuDevice::Create(GrSurface* surface, unsigned flags) {
     SkASSERT(NULL != surface);
     if (NULL == surface->asRenderTarget() || NULL == surface->getContext()) {
@@ -149,13 +141,11 @@ SkGpuDevice* SkGpuDevice::Create(GrSurface* surface, unsigned flags) {
     }
 }
 
-SkGpuDevice::SkGpuDevice(GrContext* context, GrTexture* texture, unsigned flags)
-    : SkBitmapDevice(make_bitmap(context, texture->asRenderTarget())) {
+SkGpuDevice::SkGpuDevice(GrContext* context, GrTexture* texture, unsigned flags) {
     this->initFromRenderTarget(context, texture->asRenderTarget(), flags);
 }
 
-SkGpuDevice::SkGpuDevice(GrContext* context, GrRenderTarget* renderTarget, unsigned flags)
-    : SkBitmapDevice(make_bitmap(context, renderTarget)) {
+SkGpuDevice::SkGpuDevice(GrContext* context, GrRenderTarget* renderTarget, unsigned flags) {
     this->initFromRenderTarget(context, renderTarget, flags);
 }
 
@@ -166,11 +156,6 @@ void SkGpuDevice::initFromRenderTarget(GrContext* context,
 
     fContext = context;
     fContext->ref();
-
-    bool useDFFonts = !!(flags & kDFFonts_Flag);
-    fMainTextContext = SkNEW_ARGS(GrDistanceFieldTextContext, (fContext, fLeakyProperties,
-                                                               useDFFonts));
-    fFallbackTextContext = SkNEW_ARGS(GrBitmapTextContext, (fContext, fLeakyProperties));
 
     fRenderTarget = NULL;
     fNeedClear = flags & kNeedClear_Flag;
@@ -190,8 +175,12 @@ void SkGpuDevice::initFromRenderTarget(GrContext* context,
 
     SkPixelRef* pr = SkNEW_ARGS(SkGrPixelRef,
                                 (surface->info(), surface, SkToBool(flags & kCached_Flag)));
+    fLegacyBitmap.setInfo(surface->info());
+    fLegacyBitmap.setPixelRef(pr)->unref();
 
-    this->setPixelRef(pr)->unref();
+    bool useDFFonts = !!(flags & kDFFonts_Flag);
+    fMainTextContext = fContext->createTextContext(fRenderTarget, fLeakyProperties, useDFFonts);
+    fFallbackTextContext = SkNEW_ARGS(GrBitmapTextContext, (fContext, fLeakyProperties));
 }
 
 SkGpuDevice* SkGpuDevice::Create(GrContext* context, const SkImageInfo& origInfo,
@@ -291,14 +280,14 @@ bool SkGpuDevice::onWritePixels(const SkImageInfo& info, const void* pixels, siz
     fRenderTarget->writePixels(x, y, info.width(), info.height(), config, pixels, rowBytes, flags);
 
     // need to bump our genID for compatibility with clients that "know" we have a bitmap
-    this->onAccessBitmap().notifyPixelsChanged();
+    fLegacyBitmap.notifyPixelsChanged();
 
     return true;
 }
 
 const SkBitmap& SkGpuDevice::onAccessBitmap() {
     DO_DEFERRED_CLEAR();
-    return INHERITED::onAccessBitmap();
+    return fLegacyBitmap;
 }
 
 void SkGpuDevice::onAttachToCanvas(SkCanvas* canvas) {
@@ -355,6 +344,7 @@ SK_COMPILE_ASSERT(SkShader::kLast_BitmapType == 6, shader_type_mismatch);
 ///////////////////////////////////////////////////////////////////////////////
 
 void SkGpuDevice::clear(SkColor color) {
+    GR_CREATE_TRACE_MARKER_CONTEXT("SkGpuDevice::clear", fContext);
     SkIRect rect = SkIRect::MakeWH(this->width(), this->height());
     fContext->clear(&rect, SkColor2GrColor(color), true, fRenderTarget);
     fNeedClear = false;
@@ -362,6 +352,7 @@ void SkGpuDevice::clear(SkColor color) {
 
 void SkGpuDevice::drawPaint(const SkDraw& draw, const SkPaint& paint) {
     CHECK_SHOULD_DRAW(draw, false);
+    GR_CREATE_TRACE_MARKER_CONTEXT("SkGpuDevice::drawPaint", fContext);
 
     GrPaint grPaint;
     SkPaint2GrPaintShader(this->context(), paint, true, &grPaint);
@@ -474,7 +465,7 @@ void SkGpuDevice::drawRect(const SkDraw& draw, const SkRect& rect,
 
     GrPaint grPaint;
     SkPaint2GrPaintShader(this->context(), paint, true, &grPaint);
-  
+
     fContext->drawRect(grPaint, rect, &strokeInfo);
 }
 
@@ -482,12 +473,13 @@ void SkGpuDevice::drawRect(const SkDraw& draw, const SkRect& rect,
 
 void SkGpuDevice::drawRRect(const SkDraw& draw, const SkRRect& rect,
                            const SkPaint& paint) {
+    GR_CREATE_TRACE_MARKER_CONTEXT("SkGpuDevice::drawRRect", fContext);
     CHECK_FOR_ANNOTATION(paint);
     CHECK_SHOULD_DRAW(draw, false);
 
     GrPaint grPaint;
     SkPaint2GrPaintShader(this->context(), paint, true, &grPaint);
-    
+
     GrStrokeInfo strokeInfo(paint);
     if (paint.getMaskFilter()) {
         // try to hit the fast path for drawing filtered round rects
@@ -536,7 +528,7 @@ void SkGpuDevice::drawRRect(const SkDraw& draw, const SkRRect& rect,
         this->drawPath(draw, path, paint, NULL, true);
         return;
     }
-    
+
     fContext->drawRRect(grPaint, rect, strokeInfo);
 }
 
@@ -570,6 +562,7 @@ void SkGpuDevice::drawDRRect(const SkDraw& draw, const SkRRect& outer,
 
 void SkGpuDevice::drawOval(const SkDraw& draw, const SkRect& oval,
                            const SkPaint& paint) {
+    GR_CREATE_TRACE_MARKER_CONTEXT("SkGpuDevice::drawOval", fContext);
     CHECK_FOR_ANNOTATION(paint);
     CHECK_SHOULD_DRAW(draw, false);
 
@@ -735,6 +728,7 @@ void SkGpuDevice::drawPath(const SkDraw& draw, const SkPath& origSrcPath,
                            bool pathIsMutable) {
     CHECK_FOR_ANNOTATION(paint);
     CHECK_SHOULD_DRAW(draw, false);
+    GR_CREATE_TRACE_MARKER_CONTEXT("SkGpuDevice::drawPath", fContext);
 
     GrPaint grPaint;
     SkPaint2GrPaintShader(this->context(), paint, true, &grPaint);
@@ -1339,7 +1333,7 @@ void SkGpuDevice::internalDrawBitmap(const SkBitmap& bitmap,
                       SkScalarMul(srcRect.fBottom, hInv));
 
     SkRect textureDomain = SkRect::MakeEmpty();
-    SkAutoTUnref<GrEffectRef> effect;
+    SkAutoTUnref<GrEffect> effect;
     if (needsTextureDomain && !(flags & SkCanvas::kBleed_DrawBitmapRectFlag)) {
         // Use a constrained texture domain to avoid color bleeding
         SkScalar left, top, right, bottom;
@@ -1380,9 +1374,9 @@ void SkGpuDevice::internalDrawBitmap(const SkBitmap& bitmap,
     GrPaint grPaint;
     grPaint.addColorEffect(effect);
     bool alphaOnly = !(kAlpha_8_SkColorType == bitmap.colorType());
-    GrColor grColor = (alphaOnly) ? SkColor2GrColorJustAlpha(paint.getColor()) :
-                                    SkColor2GrColor(paint.getColor());
-    SkPaint2GrPaintNoShader(this->context(), paint, grColor, false, &grPaint);
+    GrColor paintColor = (alphaOnly) ? SkColor2GrColorJustAlpha(paint.getColor()) :
+                                       SkColor2GrColor(paint.getColor());
+    SkPaint2GrPaintNoShader(this->context(), paint, paintColor, false, &grPaint);
 
     fContext->drawRectToRect(grPaint, dstRect, paintRect, NULL);
 }
@@ -1511,6 +1505,7 @@ void SkGpuDevice::drawBitmapRect(const SkDraw& origDraw, const SkBitmap& bitmap,
 void SkGpuDevice::drawDevice(const SkDraw& draw, SkBaseDevice* device,
                              int x, int y, const SkPaint& paint) {
     // clear of the source device must occur before CHECK_SHOULD_DRAW
+    GR_CREATE_TRACE_MARKER_CONTEXT("SkGpuDevice::drawDevice", fContext);
     SkGpuDevice* dev = static_cast<SkGpuDevice*>(device);
     if (dev->fNeedClear) {
         // TODO: could check here whether we really need to draw at all
@@ -1616,38 +1611,67 @@ void SkGpuDevice::drawVertices(const SkDraw& draw, SkCanvas::VertexMode vmode,
                               const SkPaint& paint) {
     CHECK_SHOULD_DRAW(draw, false);
 
+    GR_CREATE_TRACE_MARKER_CONTEXT("SkGpuDevice::drawVertices", fContext);
+    
+    const uint16_t* outIndices;
+    SkAutoTDeleteArray<uint16_t> outAlloc(NULL);
+    GrPrimitiveType primType;
+    GrPaint grPaint;
+    
     // If both textures and vertex-colors are NULL, strokes hairlines with the paint's color.
     if ((NULL == texs || NULL == paint.getShader()) && NULL == colors) {
+        
         texs = NULL;
+        
         SkPaint copy(paint);
         copy.setStyle(SkPaint::kStroke_Style);
         copy.setStrokeWidth(0);
+        
+        // we ignore the shader if texs is null.
+        SkPaint2GrPaintNoShader(this->context(), copy, SkColor2GrColor(copy.getColor()),
+                                NULL == colors, &grPaint);
 
+        primType = kLines_GrPrimitiveType;
+        int triangleCount = 0;
+        switch (vmode) {
+            case SkCanvas::kTriangles_VertexMode:
+                triangleCount = indexCount / 3;
+                break;
+            case SkCanvas::kTriangleStrip_VertexMode:
+            case SkCanvas::kTriangleFan_VertexMode:
+                triangleCount = indexCount - 2;
+                break;
+        }
+        
         VertState       state(vertexCount, indices, indexCount);
         VertState::Proc vertProc = state.chooseProc(vmode);
-
-        SkPoint* pts = new SkPoint[vertexCount * 6];
+        
+        //number of indices for lines per triangle with kLines
+        indexCount = triangleCount * 6;
+        
+        outAlloc.reset(SkNEW_ARRAY(uint16_t, indexCount));
+        outIndices = outAlloc.get();
+        uint16_t* auxIndices = outAlloc.get();
         int i = 0;
         while (vertProc(&state)) {
-            pts[i] = vertices[state.f0];
-            pts[i + 1] = vertices[state.f1];
-            pts[i + 2] = vertices[state.f1];
-            pts[i + 3] = vertices[state.f2];
-            pts[i + 4] = vertices[state.f2];
-            pts[i + 5] = vertices[state.f0];
+            auxIndices[i]     = state.f0;
+            auxIndices[i + 1] = state.f1;
+            auxIndices[i + 2] = state.f1;
+            auxIndices[i + 3] = state.f2;
+            auxIndices[i + 4] = state.f2;
+            auxIndices[i + 5] = state.f0;
             i += 6;
         }
-        draw.drawPoints(SkCanvas::kLines_PointMode, i, pts, copy, true);
-        return;
-    }
-
-    GrPaint grPaint;
-    // we ignore the shader if texs is null.
-    if (NULL == texs) {
-        SkPaint2GrPaintNoShader(this->context(), paint, SkColor2GrColor(paint.getColor()),
-                                NULL == colors, &grPaint);
     } else {
-        SkPaint2GrPaintShader(this->context(), paint, NULL == colors, &grPaint);
+        outIndices = indices;
+        primType = gVertexMode2PrimitiveType[vmode];
+        
+        if (NULL == texs || NULL == paint.getShader()) {
+            SkPaint2GrPaintNoShader(this->context(), paint, SkColor2GrColor(paint.getColor()),
+                                    NULL == colors, &grPaint);
+        } else {
+            SkPaint2GrPaintShader(this->context(), paint, NULL == colors, &grPaint);
+        }
     }
 
 #if 0
@@ -1674,12 +1698,12 @@ void SkGpuDevice::drawVertices(const SkDraw& draw, SkCanvas::VertexMode vmode,
         colors = convertedColors.get();
     }
     fContext->drawVertices(grPaint,
-                           gVertexMode2PrimitiveType[vmode],
+                           primType,
                            vertexCount,
                            vertices,
                            texs,
                            colors,
-                           indices,
+                           outIndices,
                            indexCount);
 }
 
@@ -1689,6 +1713,7 @@ void SkGpuDevice::drawText(const SkDraw& draw, const void* text,
                           size_t byteLength, SkScalar x, SkScalar y,
                           const SkPaint& paint) {
     CHECK_SHOULD_DRAW(draw, false);
+    GR_CREATE_TRACE_MARKER_CONTEXT("SkGpuDevice::drawText", fContext);
 
     if (fMainTextContext->canDraw(paint)) {
         GrPaint grPaint;
@@ -1838,7 +1863,7 @@ static void wrap_texture(GrTexture* texture, int width, int height, SkBitmap* re
 }
 
 void SkGpuDevice::EXPERIMENTAL_purge(const SkPicture* picture) {
-
+    fContext->getLayerCache()->purge(picture);
 }
 
 bool SkGpuDevice::EXPERIMENTAL_drawPicture(SkCanvas* canvas, const SkPicture* picture) {
@@ -1868,7 +1893,7 @@ bool SkGpuDevice::EXPERIMENTAL_drawPicture(SkCanvas* canvas, const SkPicture* pi
     SkIRect query;
     clipBounds.roundOut(&query);
 
-    const SkPicture::OperationList& ops = picture->EXPERIMENTAL_getActiveOps(query);
+    SkAutoTDelete<const SkPicture::OperationList> ops(picture->EXPERIMENTAL_getActiveOps(query));
 
     // This code pre-renders the entire layer since it will be cached and potentially
     // reused with different clips (e.g., in different tiles). Because of this the
@@ -1876,12 +1901,12 @@ bool SkGpuDevice::EXPERIMENTAL_drawPicture(SkCanvas* canvas, const SkPicture* pi
     // is used to limit which clips are pre-rendered.
     static const int kSaveLayerMaxSize = 256;
 
-    if (ops.valid()) {
+    if (NULL != ops.get()) {
         // In this case the picture has been generated with a BBH so we use
         // the BBH to limit the pre-rendering to just the layers needed to cover
         // the region being drawn
-        for (int i = 0; i < ops.numOps(); ++i) {
-            uint32_t offset = ops.offset(i);
+        for (int i = 0; i < ops->numOps(); ++i) {
+            uint32_t offset = ops->offset(i);
 
             // For now we're saving all the layers in the GPUAccelData so they
             // can be nested. Additionally, the nested layers appear before
@@ -1937,78 +1962,97 @@ bool SkGpuDevice::EXPERIMENTAL_drawPicture(SkCanvas* canvas, const SkPicture* pi
         }
     }
 
-    SkPicturePlayback::PlaybackReplacements replacements;
+    SkPictureReplacementPlayback::PlaybackReplacements replacements;
 
+    // Generate the layer and/or ensure it is locked
     for (int i = 0; i < gpuData->numSaveLayers(); ++i) {
         if (pullForward[i]) {
             GrCachedLayer* layer = fContext->getLayerCache()->findLayerOrCreate(picture, i);
 
             const GPUAccelData::SaveLayerInfo& info = gpuData->saveLayerInfo(i);
 
-            if (NULL != picture->fPlayback) {
-                SkPicturePlayback::PlaybackReplacements::ReplacementInfo* layerInfo =
+            SkPictureReplacementPlayback::PlaybackReplacements::ReplacementInfo* layerInfo =
                                                                         replacements.push();
-                layerInfo->fStart = info.fSaveLayerOpID;
-                layerInfo->fStop = info.fRestoreOpID;
-                layerInfo->fPos = info.fOffset;
+            layerInfo->fStart = info.fSaveLayerOpID;
+            layerInfo->fStop = info.fRestoreOpID;
+            layerInfo->fPos = info.fOffset;
 
-                GrTextureDesc desc;
-                desc.fFlags = kRenderTarget_GrTextureFlagBit;
-                desc.fWidth = info.fSize.fWidth;
-                desc.fHeight = info.fSize.fHeight;
-                desc.fConfig = kSkia8888_GrPixelConfig;
-                // TODO: need to deal with sample count
+            GrTextureDesc desc;
+            desc.fFlags = kRenderTarget_GrTextureFlagBit;
+            desc.fWidth = info.fSize.fWidth;
+            desc.fHeight = info.fSize.fHeight;
+            desc.fConfig = kSkia8888_GrPixelConfig;
+            // TODO: need to deal with sample count
 
-                bool bNeedsRendering = true;
+            bool needsRendering = !fContext->getLayerCache()->lock(layer, desc);
+            if (NULL == layer->texture()) {
+                continue;
+            }
 
-                // This just uses scratch textures and doesn't cache the texture.
-                // This can yield a lot of re-rendering
-                if (NULL == layer->getTexture()) {
-                    layer->setTexture(fContext->lockAndRefScratchTexture(desc,
-                                                        GrContext::kApprox_ScratchTexMatch));
-                    if (NULL == layer->getTexture()) {
-                        continue;
-                    }
+            layerInfo->fBM = SkNEW(SkBitmap);  // fBM is allocated so ReplacementInfo can be POD
+            wrap_texture(layer->texture(), 
+                         !layer->isAtlased() ? desc.fWidth : layer->texture()->width(),
+                         !layer->isAtlased() ? desc.fHeight : layer->texture()->height(),
+                         layerInfo->fBM);
+
+            SkASSERT(info.fPaint);
+            layerInfo->fPaint = info.fPaint;
+
+            layerInfo->fSrcRect = SkIRect::MakeXYWH(layer->rect().fLeft,
+                                                    layer->rect().fTop,
+                                                    layer->rect().width(),
+                                                    layer->rect().height());
+
+
+            if (needsRendering) {
+                SkAutoTUnref<SkSurface> surface(SkSurface::NewRenderTargetDirect(
+                                                    layer->texture()->asRenderTarget(),
+                                                    SkSurface::kStandard_TextRenderMode,
+                                                    SkSurface::kDontClear_RenderTargetFlag));
+
+                SkCanvas* canvas = surface->getCanvas();
+
+                // Add a rect clip to make sure the rendering doesn't
+                // extend beyond the boundaries of the atlased sub-rect
+                SkRect bound = SkRect::Make(layerInfo->fSrcRect);
+                canvas->clipRect(bound);
+
+                if (layer->isAtlased()) {
+                    // Since 'clear' doesn't respect the clip we need to draw a rect
+                    // TODO: ensure none of the atlased layers contain a clear call!
+                    SkPaint paint;
+                    paint.setColor(SK_ColorTRANSPARENT);
+                    canvas->drawRect(bound, paint);
                 } else {
-                    bNeedsRendering = false;
-                }
-
-                layerInfo->fBM = SkNEW(SkBitmap);
-                wrap_texture(layer->getTexture(), desc.fWidth, desc.fHeight, layerInfo->fBM);
-
-                SkASSERT(info.fPaint);
-                layerInfo->fPaint = info.fPaint;
-
-                if (bNeedsRendering) {
-                    SkAutoTUnref<SkSurface> surface(SkSurface::NewRenderTargetDirect(
-                                                        layer->getTexture()->asRenderTarget()));
-
-                    SkCanvas* canvas = surface->getCanvas();
-
-                    canvas->setMatrix(info.fCTM);
                     canvas->clear(SK_ColorTRANSPARENT);
-
-                    picture->fPlayback->setDrawLimits(info.fSaveLayerOpID, info.fRestoreOpID);
-                    picture->fPlayback->draw(*canvas, NULL);
-                    picture->fPlayback->setDrawLimits(0, 0);
-                    canvas->flush();
                 }
+
+                // info.fCTM maps the layer's top/left to the origin.
+                // If this layer is atlased the top/left corner needs
+                // to be offset to some arbitrary location in the backing 
+                // texture.
+                canvas->translate(bound.fLeft, bound.fTop);
+                canvas->concat(info.fCTM);
+
+                SkPictureRangePlayback rangePlayback(picture,
+                                                     info.fSaveLayerOpID, 
+                                                     info.fRestoreOpID);
+                rangePlayback.draw(canvas, NULL);
+
+                canvas->flush();
             }
         }
     }
 
     // Playback using new layers
-    picture->fPlayback->setReplacements(&replacements);
-    picture->fPlayback->draw(*canvas, NULL);
-    picture->fPlayback->setReplacements(NULL);
+    SkPictureReplacementPlayback playback(picture, &replacements, ops.get());
 
+    playback.draw(canvas, NULL);
+
+    // unlock the layers
     for (int i = 0; i < gpuData->numSaveLayers(); ++i) {
-        GrCachedLayer* layer = fContext->getLayerCache()->findLayerOrCreate(picture, i);
-
-        if (NULL != layer->getTexture()) {
-            fContext->unlockScratchTexture(layer->getTexture());
-            layer->setTexture(NULL);
-        }
+        GrCachedLayer* layer = fContext->getLayerCache()->findLayer(picture, i);
+        fContext->getLayerCache()->unlock(layer);
     }
 
     return true;

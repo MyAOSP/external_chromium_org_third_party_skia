@@ -19,17 +19,18 @@ import imagediffdb
 import imagepair
 
 
-IMG_URL_BASE = 'http://chromium-skia-gm.commondatastorage.googleapis.com/gm/bitmap-64bitMD5/'
+IMG_URL_BASE = ('http://chromium-skia-gm.commondatastorage.googleapis.com/'
+                'gm/bitmap-64bitMD5/')
 
 
 class ImagePairTest(unittest.TestCase):
 
   def setUp(self):
-    self._temp_dir = tempfile.mkdtemp()
+    self.temp_dir = tempfile.mkdtemp()
     self.maxDiff = None
 
   def tearDown(self):
-    shutil.rmtree(self._temp_dir)
+    shutil.rmtree(self.temp_dir)
 
   def shortDescription(self):
     """Tells unittest framework to not print docstrings for test cases."""
@@ -87,7 +88,7 @@ class ImagePairTest(unittest.TestCase):
                     'maxDiffPerChannel': [255, 255, 247],
                     'numDifferingPixels': 662,
                     'percentDifferingPixels': 0.0662,
-                    'perceptualDifference': 0.06620000000000914,
+                    'perceptualDifference': 0.06620300000000157,
                 },
                 'imageAUrl': 'arcofzorro/16206093933823793653.png',
                 'imageBUrl': 'arcofzorro/13786535001616823825.png',
@@ -162,7 +163,7 @@ class ImagePairTest(unittest.TestCase):
         ],
     ]
 
-    db = imagediffdb.ImageDiffDB(self._temp_dir)
+    db = imagediffdb.ImageDiffDB(self.temp_dir)
     for selftest in selftests:
       image_pair = imagepair.ImagePair(
           image_diff_db=db,

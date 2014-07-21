@@ -134,9 +134,6 @@
         # Lua
         '../src/utils/SkLuaCanvas.cpp',
         '../src/utils/SkLua.cpp',
-
-        # tools
-        '../tools/sk_tool_utils.cpp',
       ],
       'sources!': [
         '../samplecode/SampleSkLayer.cpp', #relies on SkMatrix44 which doesn't compile
@@ -150,8 +147,9 @@
         'flags.gyp:flags',
         'lua.gyp:lua',
         'pdf.gyp:pdf',
-        'resources.gyp:resources',
         'skia_lib.gyp:skia_lib',
+        'tools.gyp:resources',
+        'tools.gyp:sk_tool_utils',
         'views.gyp:views',
         'views_animated.gyp:views_animated',
         'xml.gyp:xml',

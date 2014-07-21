@@ -7,7 +7,6 @@
         'target_name': 'dm',
         'type': 'executable',
         'include_dirs': [
-            '../bench',
             '../dm',
             '../gm',
             '../tests',
@@ -21,14 +20,12 @@
             '../tools',
         ],
         'includes': [
-            'bench.gypi',
             'gmslides.gypi',
             'pathops_unittest.gypi',
             'tests.gypi',
         ],
         'sources': [
             '../dm/DM.cpp',
-            '../dm/DMBenchTask.cpp',
             '../dm/DMCpuGMTask.cpp',
             '../dm/DMExpectationsTask.cpp',
             '../dm/DMGpuGMTask.cpp',
@@ -36,8 +33,6 @@
             '../dm/DMPDFTask.cpp',
             '../dm/DMPipeTask.cpp',
             '../dm/DMQuiltTask.cpp',
-            '../dm/DMRecordTask.cpp',
-            '../dm/DMReplayTask.cpp',
             '../dm/DMReporter.cpp',
             '../dm/DMSKPTask.cpp',
             '../dm/DMSerializeTask.cpp',
@@ -55,12 +50,13 @@
             '../src/utils/debugger/SkObjectParser.cpp',
         ],
         'dependencies': [
-            'crash_handler.gyp:CrashHandler',
             'etc1.gyp:libetc1',
             'flags.gyp:flags',
             'gputest.gyp:skgputest',
             'jsoncpp.gyp:jsoncpp',
             'skia_lib.gyp:skia_lib',
+            'tools.gyp:crash_handler',
+            'tools.gyp:sk_tool_utils',
         ],
         'conditions': [
           ['skia_android_framework', {

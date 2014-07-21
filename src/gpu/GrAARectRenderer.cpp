@@ -8,6 +8,7 @@
 #include "GrAARectRenderer.h"
 #include "GrGpu.h"
 #include "gl/GrGLEffect.h"
+#include "gl/GrGLShaderBuilder.h"
 #include "gl/GrGLVertexEffect.h"
 #include "GrTBackendEffectFactory.h"
 #include "SkColorPriv.h"
@@ -19,7 +20,7 @@ class GrGLAlignedRectEffect;
 // Axis Aligned special case
 class GrAlignedRectEffect : public GrVertexEffect {
 public:
-    static GrEffectRef* Create() {
+    static GrEffect* Create() {
         GR_CREATE_STATIC_EFFECT(gAlignedRectEffect, GrAlignedRectEffect, ());
         gAlignedRectEffect->ref();
         return gAlignedRectEffect;
@@ -113,10 +114,10 @@ private:
 
 GR_DEFINE_EFFECT_TEST(GrAlignedRectEffect);
 
-GrEffectRef* GrAlignedRectEffect::TestCreate(SkRandom* random,
-                                             GrContext* context,
-                                             const GrDrawTargetCaps&,
-                                             GrTexture* textures[]) {
+GrEffect* GrAlignedRectEffect::TestCreate(SkRandom* random,
+                                          GrContext* context,
+                                          const GrDrawTargetCaps&,
+                                          GrTexture* textures[]) {
     return GrAlignedRectEffect::Create();
 }
 
@@ -137,7 +138,7 @@ class GrGLRectEffect;
  */
 class GrRectEffect : public GrVertexEffect {
 public:
-    static GrEffectRef* Create() {
+    static GrEffect* Create() {
         GR_CREATE_STATIC_EFFECT(gRectEffect, GrRectEffect, ());
         gRectEffect->ref();
         return gRectEffect;
@@ -248,10 +249,10 @@ private:
 
 GR_DEFINE_EFFECT_TEST(GrRectEffect);
 
-GrEffectRef* GrRectEffect::TestCreate(SkRandom* random,
-                                      GrContext* context,
-                                      const GrDrawTargetCaps&,
-                                      GrTexture* textures[]) {
+GrEffect* GrRectEffect::TestCreate(SkRandom* random,
+                                   GrContext* context,
+                                   const GrDrawTargetCaps&,
+                                   GrTexture* textures[]) {
     return GrRectEffect::Create();
 }
 
@@ -631,7 +632,7 @@ void GrAARectRenderer::shaderFillAARect(GrGpu* gpu,
 
     RectVertex* verts = reinterpret_cast<RectVertex*>(geo.vertices());
 
-    GrEffectRef* effect = GrRectEffect::Create();
+    GrEffect* effect = GrRectEffect::Create();
     static const int kRectAttrIndex = 1;
     static const int kWidthIndex = 2;
     drawState->addCoverageEffect(effect, kRectAttrIndex, kWidthIndex)->unref();
@@ -681,7 +682,7 @@ void GrAARectRenderer::shaderFillAlignedAARect(GrGpu* gpu,
 
     AARectVertex* verts = reinterpret_cast<AARectVertex*>(geo.vertices());
 
-    GrEffectRef* effect = GrAlignedRectEffect::Create();
+    GrEffect* effect = GrAlignedRectEffect::Create();
     static const int kOffsetIndex = 1;
     drawState->addCoverageEffect(effect, kOffsetIndex)->unref();
 

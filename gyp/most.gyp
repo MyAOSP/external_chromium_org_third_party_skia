@@ -15,7 +15,7 @@
         # The minimal set of static libraries for basic Skia functionality.
         'skia_lib.gyp:skia_lib',
 
-        'bench.gyp:bench',
+        'bench.gyp:*',
         'gm.gyp:gm',
         'SampleApp.gyp:SampleApp',
         'tests.gyp:tests',
@@ -30,6 +30,7 @@
         }],
         ['skia_os == "ios"', {
           'dependencies!': [ 'SampleApp.gyp:SampleApp' ],
+          'dependencies': ['iOSShell.gyp:iOSShell' ],
         }],
         ['skia_os == "mac" or skia_os == "linux"', {
           'dependencies': [ 'nanomsg.gyp:*' ],

@@ -6,12 +6,10 @@
  */
 
 #include "BenchLogger.h"
-#include "BenchTimer.h"
 #include "Benchmark.h"
 #include "CrashHandler.h"
 #include "GMBench.h"
 #include "ResultsWriter.h"
-#include "SkBitmapDevice.h"
 #include "SkCanvas.h"
 #include "SkColorPriv.h"
 #include "SkCommandLineFlags.h"
@@ -24,12 +22,12 @@
 #include "SkPictureRecorder.h"
 #include "SkString.h"
 #include "SkSurface.h"
+#include "Timer.h"
 
 #if SK_SUPPORT_GPU
 #include "GrContext.h"
 #include "GrContextFactory.h"
 #include "GrRenderTarget.h"
-#include "SkGpuDevice.h"
 #include "gl/GrGLDefines.h"
 #else
 class GrContext;
@@ -49,6 +47,11 @@ const char* BenchMode_Name[] = {
 };
 
 static const char kDefaultsConfigStr[] = "defaults";
+
+#if SK_SUPPORT_GPU
+static const char kGpuAPINameGL[] = "gl";
+static const char kGpuAPINameGLES[] = "gles";
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -222,13 +225,18 @@ DEFINE_bool(rotate, false,  "Rotate canvas before bench run?");
 DEFINE_bool(scale,  false,  "Scale canvas before bench run?");
 DEFINE_bool(clip,   false,  "Clip canvas before bench run?");
 
-DEFINE_bool(forceAA,        true,     "Force anti-aliasing?");
-DEFINE_bool(forceFilter,    false,    "Force bitmap filtering?");
 DEFINE_string(forceDither, "default", "Force dithering: true, false, or default?");
 DEFINE_bool(forceBlend,     false,    "Force alpha blending?");
 
+DEFINE_string(gpuAPI, "", "Force use of specific gpu API.  Using \"gl\" "
+              "forces OpenGL API. Using \"gles\" forces OpenGL ES API. "
+              "Defaults to empty string, which selects the API native to the "
+              "system.");
 DEFINE_int32(gpuCacheBytes, -1, "GPU cache size limit in bytes.  0 to disable cache.");
 DEFINE_int32(gpuCacheCount, -1, "GPU cache size limit in object count.  0 to disable cache.");
+
+DEFINE_bool(gpu, true, "Allows GPU configs to be run. Applied after --configs.");
+DEFINE_bool(cpu, true, "Allows non-GPU configs to be run. Applied after --config.");
 
 DEFINE_bool2(leaks, l, false, "show leaked ref cnt'd objects.");
 DEFINE_string(match, "",  "[~][^]substring[$] [...] of test name to run.\n"
@@ -249,7 +257,7 @@ DEFINE_string(config, kDefaultsConfigStr,
               "Run configs given.  By default, runs the configs marked \"runByDefault\" in gConfigs.");
 DEFINE_string(logFile, "", "Also write stdout here.");
 DEFINE_int32(minMs, 20,  "Shortest time we'll allow a benchmark to run.");
-DEFINE_int32(maxMs, 4000, "Longest time we'll allow a benchmark to run.");
+DEFINE_int32(maxMs, 1000, "Longest time we'll allow a benchmark to run.");
 DEFINE_bool(runOnce, kIsDebug, "Run each bench exactly once and don't report timings.");
 DEFINE_double(error, 0.01,
               "Ratio of subsequent bench measurements must drop within 1±error to converge.");
@@ -346,13 +354,39 @@ int tool_main(int argc, char** argv) {
             }
         }
     }
+    // Apply the gpu/cpu only flags
+    for (int i = 0; i < configs.count(); ++i) {
+        const Config& config = gConfigs[configs[i]];
+        if (config.backend == Benchmark::kGPU_Backend) {
+            if (!FLAGS_gpu) {
+                configs.remove(i, 1);
+                --i;
+            }
+        } else if (!FLAGS_cpu) {
+            configs.remove(i, 1);
+            --i;
+        }
+    }
 
 #if SK_SUPPORT_GPU
+    GrGLStandard gpuAPI = kNone_GrGLStandard;
+    if (1 == FLAGS_gpuAPI.count()) {
+        if (FLAGS_gpuAPI.contains(kGpuAPINameGL)) {
+            gpuAPI = kGL_GrGLStandard;
+        } else if (FLAGS_gpuAPI.contains(kGpuAPINameGLES)) {
+            gpuAPI = kGLES_GrGLStandard;
+        } else {
+            SkDebugf("Selected gpu API could not be used. Using the default.\n");
+        }
+    } else if (FLAGS_gpuAPI.count() > 1)  {
+        SkDebugf("Selected gpu API could not be used. Using the default.\n");
+    }
+
     for (int i = 0; i < configs.count(); ++i) {
         const Config& config = gConfigs[configs[i]];
 
         if (Benchmark::kGPU_Backend == config.backend) {
-            GrContext* context = gContextFactory.get(config.contextType);
+            GrContext* context = gContextFactory.get(config.contextType, gpuAPI);
             if (NULL == context) {
                 SkDebugf("GrContext could not be created for config %s. Config will be skipped.\n",
                     config.name);
@@ -379,8 +413,6 @@ int tool_main(int argc, char** argv) {
     }
     writer.option("mode", FLAGS_mode[0]);
     writer.option("alpha", SkStringPrintf("0x%02X", alpha).c_str());
-    writer.option("antialias", SkStringPrintf("%d", FLAGS_forceAA).c_str());
-    writer.option("filter", SkStringPrintf("%d", FLAGS_forceFilter).c_str());
     writer.option("dither",  SkTriState::Name[dither]);
 
     writer.option("rotate", SkStringPrintf("%d", FLAGS_rotate).c_str());
@@ -412,7 +444,7 @@ int tool_main(int argc, char** argv) {
         if (Benchmark::kGPU_Backend != config.backend) {
             continue;
         }
-        GrContext* context = gContextFactory.get(config.contextType);
+        GrContext* context = gContextFactory.get(config.contextType, gpuAPI);
         if (NULL == context) {
             continue;
         }
@@ -440,8 +472,6 @@ int tool_main(int argc, char** argv) {
         }
 
         bench->setForceAlpha(alpha);
-        bench->setForceAA(FLAGS_forceAA);
-        bench->setForceFilter(FLAGS_forceFilter);
         bench->setDither(dither);
         bench->preDraw();
 
@@ -458,7 +488,7 @@ int tool_main(int argc, char** argv) {
 #if SK_SUPPORT_GPU
             SkGLContextHelper* glContext = NULL;
             if (Benchmark::kGPU_Backend == config.backend) {
-                context = gContextFactory.get(config.contextType);
+                context = gContextFactory.get(config.contextType, gpuAPI);
                 if (NULL == context) {
                     continue;
                 }
@@ -530,9 +560,9 @@ int tool_main(int argc, char** argv) {
             if (Benchmark::kGPU_Backend == config.backend) {
                 contextHelper = gContextFactory.getGLContext(config.contextType);
             }
-            BenchTimer timer(contextHelper);
+            Timer timer(contextHelper);
 #else
-            BenchTimer timer;
+            Timer timer;
 #endif
 
             double previous = std::numeric_limits<double>::infinity();

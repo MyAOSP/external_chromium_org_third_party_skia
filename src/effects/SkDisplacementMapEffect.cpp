@@ -14,6 +14,7 @@
 #include "GrContext.h"
 #include "GrCoordTransform.h"
 #include "gl/GrGLEffect.h"
+#include "gl/GrGLShaderBuilder.h"
 #include "GrTBackendEffectFactory.h"
 #endif
 
@@ -161,10 +162,9 @@ bool channel_selector_type_is_valid(SkDisplacementMapEffect::ChannelSelectorType
 SkDisplacementMapEffect::SkDisplacementMapEffect(ChannelSelectorType xChannelSelector,
                                                  ChannelSelectorType yChannelSelector,
                                                  SkScalar scale,
-                                                 SkImageFilter* displacement,
-                                                 SkImageFilter* color,
+                                                 SkImageFilter* inputs[2],
                                                  const CropRect* cropRect)
-  : INHERITED(displacement, color, cropRect)
+  : INHERITED(2, inputs, cropRect)
   , fXChannelSelector(xChannelSelector)
   , fYChannelSelector(yChannelSelector)
   , fScale(scale)
@@ -300,18 +300,17 @@ private:
 
 class GrDisplacementMapEffect : public GrEffect {
 public:
-    static GrEffectRef* Create(SkDisplacementMapEffect::ChannelSelectorType xChannelSelector,
-                               SkDisplacementMapEffect::ChannelSelectorType yChannelSelector,
-                               SkVector scale,
-                               GrTexture* displacement, const SkMatrix& offsetMatrix,
-                               GrTexture* color) {
-        AutoEffectUnref effect(SkNEW_ARGS(GrDisplacementMapEffect, (xChannelSelector,
-                                                                    yChannelSelector,
-                                                                    scale,
-                                                                    displacement,
-                                                                    offsetMatrix,
-                                                                    color)));
-        return CreateEffectRef(effect);
+    static GrEffect* Create(SkDisplacementMapEffect::ChannelSelectorType xChannelSelector,
+                            SkDisplacementMapEffect::ChannelSelectorType yChannelSelector,
+                            SkVector scale,
+                            GrTexture* displacement, const SkMatrix& offsetMatrix,
+                            GrTexture* color) {
+        return SkNEW_ARGS(GrDisplacementMapEffect, (xChannelSelector,
+                                                    yChannelSelector,
+                                                    scale,
+                                                    displacement,
+                                                    offsetMatrix,
+                                                    color));
     }
 
     virtual ~GrDisplacementMapEffect();
@@ -477,10 +476,10 @@ void GrDisplacementMapEffect::getConstantColorComponents(GrColor*,
 
 GR_DEFINE_EFFECT_TEST(GrDisplacementMapEffect);
 
-GrEffectRef* GrDisplacementMapEffect::TestCreate(SkRandom* random,
-                                                 GrContext*,
-                                                 const GrDrawTargetCaps&,
-                                                 GrTexture* textures[]) {
+GrEffect* GrDisplacementMapEffect::TestCreate(SkRandom* random,
+                                              GrContext*,
+                                              const GrDrawTargetCaps&,
+                                              GrTexture* textures[]) {
     int texIdxDispl = random->nextBool() ? GrEffectUnitTest::kSkiaPMTextureIdx :
                                            GrEffectUnitTest::kAlphaTextureIdx;
     int texIdxColor = random->nextBool() ? GrEffectUnitTest::kSkiaPMTextureIdx :

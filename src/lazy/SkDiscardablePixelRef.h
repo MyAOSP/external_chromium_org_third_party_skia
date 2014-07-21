@@ -21,7 +21,6 @@
 class SkDiscardablePixelRef : public SkPixelRef {
 public:
     SK_DECLARE_INST_COUNT(SkDiscardablePixelRef)
-    SK_DECLARE_UNFLATTENABLE_OBJECT()
 
 protected:
     ~SkDiscardablePixelRef();

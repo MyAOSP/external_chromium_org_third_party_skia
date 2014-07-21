@@ -7,6 +7,7 @@
 
 #include "GrDistanceFieldTextureEffect.h"
 #include "gl/GrGLEffect.h"
+#include "gl/GrGLShaderBuilder.h"
 #include "gl/GrGLSL.h"
 #include "gl/GrGLTexture.h"
 #include "gl/GrGLVertexEffect.h"
@@ -128,7 +129,7 @@ public:
                          const GrDrawEffect& drawEffect) SK_OVERRIDE {
         SkASSERT(fTextureSizeUni.isValid());
 
-        GrTexture* texture = drawEffect.effect()->get()->texture(0);
+        GrTexture* texture = drawEffect.effect()->texture(0);
         if (texture->width() != fTextureSize.width() ||
             texture->height() != fTextureSize.height()) {
             fTextureSize = SkISize::Make(texture->width(), texture->height());
@@ -209,10 +210,10 @@ const GrBackendEffectFactory& GrDistanceFieldTextureEffect::getFactory() const {
 
 GR_DEFINE_EFFECT_TEST(GrDistanceFieldTextureEffect);
 
-GrEffectRef* GrDistanceFieldTextureEffect::TestCreate(SkRandom* random,
-                                                     GrContext*,
-                                                     const GrDrawTargetCaps&,
-                                                     GrTexture* textures[]) {
+GrEffect* GrDistanceFieldTextureEffect::TestCreate(SkRandom* random,
+                                                   GrContext*,
+                                                   const GrDrawTargetCaps&,
+                                                   GrTexture* textures[]) {
     int texIdx = random->nextBool() ? GrEffectUnitTest::kSkiaPMTextureIdx :
                                       GrEffectUnitTest::kAlphaTextureIdx;
 #ifdef SK_GAMMA_APPLY_TO_A8
@@ -386,7 +387,7 @@ public:
 
         const GrDistanceFieldLCDTextureEffect& dfTexEffect =
                                     drawEffect.castEffect<GrDistanceFieldLCDTextureEffect>();
-        GrTexture* texture = drawEffect.effect()->get()->texture(0);
+        GrTexture* texture = drawEffect.effect()->texture(0);
         if (texture->width() != fTextureSize.width() ||
             texture->height() != fTextureSize.height()) {
             fTextureSize = SkISize::Make(texture->width(), texture->height());
@@ -468,10 +469,10 @@ const GrBackendEffectFactory& GrDistanceFieldLCDTextureEffect::getFactory() cons
 
 GR_DEFINE_EFFECT_TEST(GrDistanceFieldLCDTextureEffect);
 
-GrEffectRef* GrDistanceFieldLCDTextureEffect::TestCreate(SkRandom* random,
-                                                         GrContext*,
-                                                         const GrDrawTargetCaps&,
-                                                         GrTexture* textures[]) {
+GrEffect* GrDistanceFieldLCDTextureEffect::TestCreate(SkRandom* random,
+                                                      GrContext*,
+                                                      const GrDrawTargetCaps&,
+                                                      GrTexture* textures[]) {
     int texIdx = random->nextBool() ? GrEffectUnitTest::kSkiaPMTextureIdx :
                                       GrEffectUnitTest::kAlphaTextureIdx;
     int texIdx2 = random->nextBool() ? GrEffectUnitTest::kSkiaPMTextureIdx :

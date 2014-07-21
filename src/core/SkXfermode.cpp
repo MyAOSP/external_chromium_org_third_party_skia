@@ -676,12 +676,12 @@ bool SkXfermode::asMode(Mode* mode) const {
     return false;
 }
 
-bool SkXfermode::asNewEffect(GrEffectRef** effect, GrTexture* background) const {
+bool SkXfermode::asNewEffect(GrEffect** effect, GrTexture* background) const {
     return false;
 }
 
 bool SkXfermode::AsNewEffectOrCoeff(SkXfermode* xfermode,
-                                    GrEffectRef** effect,
+                                    GrEffect** effect,
                                     Coeff* src,
                                     Coeff* dst,
                                     GrTexture* background) {
@@ -783,6 +783,7 @@ void SkXfermode::xferA8(SkAlpha* SK_RESTRICT dst,
 #include "GrEffectUnitTest.h"
 #include "GrTBackendEffectFactory.h"
 #include "gl/GrGLEffect.h"
+#include "gl/GrGLShaderBuilder.h"
 
 /**
  * GrEffect that implements the all the separable xfer modes that cannot be expressed as Coeffs.
@@ -793,12 +794,11 @@ public:
         return mode > SkXfermode::kLastCoeffMode && mode <= SkXfermode::kLastMode;
     }
 
-    static GrEffectRef* Create(SkXfermode::Mode mode, GrTexture* background) {
+    static GrEffect* Create(SkXfermode::Mode mode, GrTexture* background) {
         if (!IsSupportedMode(mode)) {
             return NULL;
         } else {
-            AutoEffectUnref effect(SkNEW_ARGS(XferEffect, (mode, background)));
-            return CreateEffectRef(effect);
+            return SkNEW_ARGS(XferEffect, (mode, background));
         }
     }
 
@@ -971,7 +971,7 @@ public:
 
         static inline EffectKey GenKey(const GrDrawEffect& drawEffect, const GrGLCaps&) {
             // The background may come from the dst or from a texture.
-            int numTextures = (*drawEffect.effect())->numTextures();
+            int numTextures = drawEffect.effect()->numTextures();
             SkASSERT(numTextures <= 1);
             return (drawEffect.castEffect<XferEffect>().mode() << 1) | numTextures;
         }
@@ -1224,14 +1224,13 @@ private:
 };
 
 GR_DEFINE_EFFECT_TEST(XferEffect);
-GrEffectRef* XferEffect::TestCreate(SkRandom* rand,
-                                    GrContext*,
-                                    const GrDrawTargetCaps&,
-                                    GrTexture*[]) {
+GrEffect* XferEffect::TestCreate(SkRandom* rand,
+                                 GrContext*,
+                                 const GrDrawTargetCaps&,
+                                 GrTexture*[]) {
     int mode = rand->nextRangeU(SkXfermode::kLastCoeffMode + 1, SkXfermode::kLastSeparableMode);
 
-    AutoEffectUnref gEffect(SkNEW_ARGS(XferEffect, (static_cast<SkXfermode::Mode>(mode), NULL)));
-    return CreateEffectRef(gEffect);
+    return SkNEW_ARGS(XferEffect, (static_cast<SkXfermode::Mode>(mode), NULL));
 }
 
 #endif
@@ -1363,8 +1362,7 @@ void SkProcCoeffXfermode::xferA8(SkAlpha* SK_RESTRICT dst,
 }
 
 #if SK_SUPPORT_GPU
-bool SkProcCoeffXfermode::asNewEffect(GrEffectRef** effect,
-                                      GrTexture* background) const {
+bool SkProcCoeffXfermode::asNewEffect(GrEffect** effect, GrTexture* background) const {
     if (XferEffect::IsSupportedMode(fMode)) {
         if (NULL != effect) {
             *effect = XferEffect::Create(fMode, background);

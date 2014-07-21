@@ -311,8 +311,27 @@ bool GrGLCaps::init(const GrGLContextInfo& ctxInfo, const GrGLInterface* gli) {
     // attachment, hence this min:
     fMaxRenderTargetSize = SkTMin(fMaxTextureSize, fMaxRenderTargetSize);
 
-    fPathRenderingSupport = ctxInfo.hasExtension("GL_NV_path_rendering") &&
-        ctxInfo.hasExtension("GL_EXT_direct_state_access");
+    fPathRenderingSupport = ctxInfo.hasExtension("GL_NV_path_rendering");
+
+    if (fPathRenderingSupport) {
+        if (kGL_GrGLStandard == standard) {
+            // We need one of the two possible texturing methods: using fixed function pipeline
+            // (PathTexGen, texcoords, ...)  or using the newer NVPR API additions that support
+            // setting individual fragment inputs with ProgramPathFragmentInputGen. The API
+            // additions are detected by checking the existence of the function. Eventually we may
+            // choose to remove the fixed function codepath.
+            // Set fMaxFixedFunctionTextureCoords = 0 here if you want to force
+            // ProgramPathFragmentInputGen usage on desktop.
+            fPathRenderingSupport = ctxInfo.hasExtension("GL_EXT_direct_state_access") &&
+                (fMaxFixedFunctionTextureCoords > 0 ||
+                 ((ctxInfo.version() >= GR_GL_VER(4,3) ||
+                   ctxInfo.hasExtension("GL_ARB_program_interface_query")) &&
+                  NULL != gli->fFunctions.fProgramPathFragmentInputGen));
+        } else {
+            // Note: path rendering is not yet implemented for GLES.
+            fPathRenderingSupport = ctxInfo.version() >= GR_GL_VER(3,1) && false;
+        }
+    }
 
     fGpuTracingSupport = ctxInfo.hasExtension("GL_EXT_debug_marker");
 
@@ -425,6 +444,10 @@ void GrGLCaps::initConfigRenderableTable(const GrGLContextInfo& ctxInfo) {
         }
     }
 
+    if (this->isConfigTexturable(kRGBA_float_GrPixelConfig)) {
+        fConfigRenderSupport[kRGBA_float_GrPixelConfig][kNo_MSAA] = true;
+    }
+
     // If we don't support MSAA then undo any places above where we set a config as renderable with
     // msaa.
     if (kNone_MSFBOType == fMSFBOType) {
@@ -485,7 +508,7 @@ void GrGLCaps::initConfigTexturableTable(const GrGLContextInfo& ctxInfo, const G
     // First check version for support
     if (kGL_GrGLStandard == standard) {
         hasETC1 = hasCompressTex2D &&
-            (version >= GR_GL_VER(4, 3) || 
+            (version >= GR_GL_VER(4, 3) ||
              ctxInfo.hasExtension("GL_ARB_ES3_compatibility"));
     } else {
         hasETC1 = hasCompressTex2D &&
@@ -531,6 +554,33 @@ void GrGLCaps::initConfigTexturableTable(const GrGLContextInfo& ctxInfo, const G
 
     fConfigTextureSupport[kLATC_GrPixelConfig] = hasLATC;
     fLATCAlias = alias;
+
+    // Check for R11_EAC
+    if (kGL_GrGLStandard == standard) {
+        fConfigTextureSupport[kR11_EAC_GrPixelConfig] =
+            version >= GR_GL_VER(4, 3) || ctxInfo.hasExtension("GL_ARB_ES3_compatibility");
+    } else {
+        fConfigTextureSupport[kR11_EAC_GrPixelConfig] = version >= GR_GL_VER(3, 0);
+    }
+
+    // Check for ASTC
+    fConfigTextureSupport[kASTC_12x12_GrPixelConfig] = 
+        ctxInfo.hasExtension("GL_KHR_texture_compression_astc_hdr") ||
+        ctxInfo.hasExtension("GL_KHR_texture_compression_astc_ldr") ||
+        ctxInfo.hasExtension("GL_OES_texture_compression_astc");
+
+    // Check for floating point texture support
+    // NOTE: We disallow floating point textures on ES devices if linear
+    // filtering modes are not supported.  This is for simplicity, but a more
+    // granular approach is possible.  Coincidentally, floating point textures became part of
+    // the standard in ES3.1 / OGL 3.1, hence the shorthand
+    bool hasFPTextures = version >= GR_GL_VER(3, 1);
+    if (!hasFPTextures) {
+        hasFPTextures = ctxInfo.hasExtension("GL_ARB_texture_float") ||
+                        (ctxInfo.hasExtension("OES_texture_float_linear") &&
+                         ctxInfo.hasExtension("GL_OES_texture_float"));
+    }
+    fConfigTextureSupport[kRGBA_float_GrPixelConfig] = hasFPTextures;
 }
 
 bool GrGLCaps::readPixelsSupported(const GrGLInterface* intf,

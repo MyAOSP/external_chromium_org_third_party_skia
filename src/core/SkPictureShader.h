@@ -21,7 +21,7 @@ class SkPicture;
  */
 class SkPictureShader : public SkShader {
 public:
-    static SkPictureShader* Create(SkPicture*, TileMode, TileMode, const SkMatrix* = NULL);
+    static SkPictureShader* Create(const SkPicture*, TileMode, TileMode, const SkMatrix* = NULL);
     virtual ~SkPictureShader();
 
     virtual size_t contextSize() const SK_OVERRIDE;
@@ -29,7 +29,7 @@ public:
     SK_TO_STRING_OVERRIDE()
     SK_DECLARE_PUBLIC_FLATTENABLE_DESERIALIZATION_PROCS(SkPictureShader)
 
-    bool asNewEffect(GrContext*, const SkPaint&, const SkMatrix*, GrColor*, GrEffectRef**)
+    bool asNewEffect(GrContext*, const SkPaint&, const SkMatrix*, GrColor*, GrEffect**)
         const SK_OVERRIDE;
 
 protected:
@@ -38,17 +38,16 @@ protected:
     virtual Context* onCreateContext(const ContextRec&, void* storage) const SK_OVERRIDE;
 
 private:
-    SkPictureShader(SkPicture*, TileMode, TileMode, const SkMatrix* = NULL);
+    SkPictureShader(const SkPicture*, TileMode, TileMode, const SkMatrix* = NULL);
 
     SkShader* refBitmapShader(const SkMatrix&, const SkMatrix* localMatrix) const;
 
-    SkPicture*  fPicture;
-    TileMode    fTmx, fTmy;
+    const SkPicture*  fPicture;
+    TileMode          fTmx, fTmy;
 
     mutable SkMutex                 fCachedBitmapShaderMutex;
     mutable SkAutoTUnref<SkShader>  fCachedBitmapShader;
     mutable SkSize                  fCachedTileScale;
-    mutable SkMatrix                fCachedLocalMatrix;
 
     class PictureShaderContext : public SkShader::Context {
     public:
