@@ -723,3 +723,32 @@ DEF_TEST(ImageDecoderOptions, reporter) {
         }
     }
 }
+
+DEF_TEST(DiscardablePixelRef_SecondLockColorTableCheck, r) {
+    SkString resourceDir = GetResourcePath();
+    SkString path = SkOSPath::SkPathJoin(resourceDir.c_str(), "randPixels.gif");
+    if (!sk_exists(path.c_str())) {
+        return;
+    }
+    SkAutoDataUnref encoded(SkData::NewFromFileName(path.c_str()));
+    SkBitmap bitmap;
+    if (!SkInstallDiscardablePixelRef(
+            SkDecodingImageGenerator::Create(
+                    encoded, SkDecodingImageGenerator::Options()), &bitmap)) {
+        #ifndef SK_BUILD_FOR_WIN
+        ERRORF(r, "SkInstallDiscardablePixelRef [randPixels.gif] failed.");
+        #endif
+        return;
+    }
+    if (kIndex_8_SkColorType != bitmap.colorType()) {
+        return;
+    }
+    {
+        SkAutoLockPixels alp(bitmap);
+        REPORTER_ASSERT(r, bitmap.getColorTable() && "first pass");
+    }
+    {
+        SkAutoLockPixels alp(bitmap);
+        REPORTER_ASSERT(r, bitmap.getColorTable() && "second pass");
+    }
+}

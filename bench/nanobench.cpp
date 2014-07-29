@@ -14,7 +14,7 @@
 #include "Timer.h"
 
 #include "SkCanvas.h"
-#include "SkCommandLineFlags.h"
+#include "SkCommonFlags.h"
 #include "SkForceLinking.h"
 #include "SkGraphics.h"
 #include "SkString.h"
@@ -38,25 +38,15 @@ DEFINE_int32(samples, 10, "Number of samples to measure for each bench.");
 DEFINE_int32(overheadLoops, 100000, "Loops to estimate timer overhead.");
 DEFINE_double(overheadGoal, 0.0001,
               "Loop until timer overhead is at most this fraction of our measurments.");
-DEFINE_string(match, "", "The usual filters on file names of benchmarks to measure.");
-DEFINE_bool2(quiet, q, false, "Print only bench name and minimum sample.");
-DEFINE_bool2(verbose, v, false, "Print all samples.");
-DEFINE_string(config, "nonrendering 8888 gpu", "Configs to measure. Options: "
-              "565 8888 gpu nonrendering debug nullgpu msaa4 msaa16 nvprmsaa4 nvprmsaa16 angle");
 DEFINE_double(gpuMs, 5, "Target bench time in millseconds for GPU.");
 DEFINE_int32(gpuFrameLag, 5, "Overestimate of maximum number of frames GPU allows to lag.");
 
-DEFINE_bool(cpu, true, "Master switch for CPU-bound work.");
-DEFINE_bool(gpu, true, "Master switch for GPU-bound work.");
-
 DEFINE_string(outResultsFile, "", "If given, write results here as JSON.");
-DEFINE_bool(resetGpuContext, true, "Reset the GrContext before running each bench.");
 DEFINE_int32(maxCalibrationAttempts, 3,
              "Try up to this many times to guess loops for a bench, or skip the bench.");
 DEFINE_int32(maxLoops, 1000000, "Never run a bench more times than this.");
 DEFINE_string(key, "", "Space-separated key/value pairs to add to JSON.");
 DEFINE_string(gitHash, "", "Git hash to add to JSON.");
-
 
 static SkString humanize(double ms) {
     if (ms > 1e+3) return SkStringPrintf("%.3gs",  ms/1e3);
@@ -153,6 +143,7 @@ static int gpu_bench(SkGLContextHelper* gl,
                      Benchmark* bench,
                      SkCanvas* canvas,
                      double* samples) {
+    gl->makeCurrent();
     // Make sure we're done with whatever came before.
     SK_GL(*gl, Finish());
 
@@ -200,71 +191,136 @@ static SkString to_lower(const char* str) {
     return lower;
 }
 
-struct Target {
-    const char* config;
+struct Config {
+    const char* name;
     Benchmark::Backend backend;
+    SkColorType color;
+    SkAlphaType alpha;
+    int samples;
+#if SK_SUPPORT_GPU
+    GrContextFactory::GLContextType ctxType;
+#else
+    int bogusInt;
+#endif
+};
+
+struct Target {
+    explicit Target(const Config& c) : config(c) {}
+    const Config config;
     SkAutoTDelete<SkSurface> surface;
 #if SK_SUPPORT_GPU
     SkGLContextHelper* gl;
 #endif
 };
 
-// If bench is enabled for backend/config, returns a Target* for them, otherwise NULL.
-static Target* is_enabled(Benchmark* bench, Benchmark::Backend backend, const char* config) {
-    if (!bench->isSuitableFor(backend)) {
-        return NULL;
-    }
-
+static bool is_cpu_config_allowed(const char* name) {
     for (int i = 0; i < FLAGS_config.count(); i++) {
-        if (to_lower(FLAGS_config[i]).equals(config)) {
-            Target* target = new Target;
-            target->config  = config;
-            target->backend = backend;
-            return target;
+        if (to_lower(FLAGS_config[i]).equals(name)) {
+            return true;
         }
     }
-    return NULL;
+    return false;
 }
 
-// Append all targets that are suitable for bench.
-static void create_targets(Benchmark* bench, SkTDArray<Target*>* targets) {
-    const int w = bench->getSize().fX,
-              h = bench->getSize().fY;
-    const SkImageInfo _8888 = { w, h, kN32_SkColorType,     kPremul_SkAlphaType },
-                       _565 = { w, h, kRGB_565_SkColorType, kOpaque_SkAlphaType };
+#if SK_SUPPORT_GPU
+static bool is_gpu_config_allowed(const char* name, GrContextFactory::GLContextType ctxType,
+                                  int sampleCnt) {
+    if (!is_cpu_config_allowed(name)) {
+        return false;
+    }
+    if (const GrContext* ctx = gGrFactory.get(ctxType)) {
+        return sampleCnt <= ctx->getMaxSampleCount();
+    }
+    return false;
+}
+#endif
 
-    #define CPU_TARGET(config, backend, code)                              \
-        if (Target* t = is_enabled(bench, Benchmark::backend, #config)) {  \
-            t->surface.reset(code);                                        \
-            targets->push(t);                                              \
+#if SK_SUPPORT_GPU
+#define kBogusGLContextType GrContextFactory::kNative_GLContextType
+#else
+#define kBogusGLContextType 0
+#endif 
+
+// Append all configs that are enabled and supported.
+static void create_configs(SkTDArray<Config>* configs) {
+    #define CPU_CONFIG(name, backend, color, alpha)                                               \
+        if (is_cpu_config_allowed(#name)) {                                                       \
+            Config config = { #name, Benchmark::backend, color, alpha, 0, kBogusGLContextType };  \
+            configs->push(config);                                                                \
         }
+         
     if (FLAGS_cpu) {
-        CPU_TARGET(nonrendering, kNonRendering_Backend, NULL)
-        CPU_TARGET(8888, kRaster_Backend, SkSurface::NewRaster(_8888))
-        CPU_TARGET(565,  kRaster_Backend, SkSurface::NewRaster(_565))
+        CPU_CONFIG(nonrendering, kNonRendering_Backend, kUnknown_SkColorType, kUnpremul_SkAlphaType)
+        CPU_CONFIG(8888, kRaster_Backend, kN32_SkColorType, kPremul_SkAlphaType)
+        CPU_CONFIG(565, kRaster_Backend, kRGB_565_SkColorType, kOpaque_SkAlphaType)
     }
 
 #if SK_SUPPORT_GPU
-
-    #define GPU_TARGET(config, ctxType, info, samples)                                            \
-        if (Target* t = is_enabled(bench, Benchmark::kGPU_Backend, #config)) {                    \
-            t->surface.reset(SkSurface::NewRenderTarget(gGrFactory.get(ctxType), info, samples)); \
-            t->gl = gGrFactory.getGLContext(ctxType);                                             \
-            targets->push(t);                                                                     \
+    #define GPU_CONFIG(name, ctxType, samples)                                   \
+        if (is_gpu_config_allowed(#name, GrContextFactory::ctxType, samples)) {  \
+            Config config = {                                                    \
+                #name,                                                           \
+                Benchmark::kGPU_Backend,                                         \
+                kN32_SkColorType,                                                \
+                kPremul_SkAlphaType,                                             \
+                samples,                                                         \
+                GrContextFactory::ctxType };                                     \
+            configs->push(config);                                               \
         }
+         
     if (FLAGS_gpu) {
-        GPU_TARGET(gpu,      GrContextFactory::kNative_GLContextType, _8888, 0)
-        GPU_TARGET(msaa4,    GrContextFactory::kNative_GLContextType, _8888, 4)
-        GPU_TARGET(msaa16,   GrContextFactory::kNative_GLContextType, _8888, 16)
-        GPU_TARGET(nvprmsaa4,  GrContextFactory::kNVPR_GLContextType, _8888, 4)
-        GPU_TARGET(nvprmsaa16, GrContextFactory::kNVPR_GLContextType, _8888, 16)
-        GPU_TARGET(debug,     GrContextFactory::kDebug_GLContextType, _8888, 0)
-        GPU_TARGET(nullgpu,    GrContextFactory::kNull_GLContextType, _8888, 0)
-        #if SK_ANGLE
-            GPU_TARGET(angle, GrContextFactory::kANGLE_GLContextType, _8888, 0)
-        #endif
+        GPU_CONFIG(gpu, kNative_GLContextType, 0)
+        GPU_CONFIG(msaa4, kNative_GLContextType, 4)
+        GPU_CONFIG(msaa16, kNative_GLContextType, 16)
+        GPU_CONFIG(nvprmsaa4, kNVPR_GLContextType, 4)
+        GPU_CONFIG(nvprmsaa16, kNVPR_GLContextType, 16)
+        GPU_CONFIG(debug, kDebug_GLContextType, 0)
+        GPU_CONFIG(nullgpu, kNull_GLContextType, 0)
     }
 #endif
+}
+
+// If bench is enabled for config, returns a Target* for it, otherwise NULL.
+static Target* is_enabled(Benchmark* bench, const Config& config) {
+    if (!bench->isSuitableFor(config.backend)) {
+        return NULL;
+    }
+
+    SkImageInfo info;
+    info.fAlphaType = config.alpha;
+    info.fColorType = config.color;
+    info.fWidth = bench->getSize().fX;
+    info.fHeight = bench->getSize().fY;
+
+    Target* target = new Target(config);
+
+    if (Benchmark::kRaster_Backend == config.backend) {
+        target->surface.reset(SkSurface::NewRaster(info));
+    }
+#if SK_SUPPORT_GPU
+    else if (Benchmark::kGPU_Backend == config.backend) {
+        target->surface.reset(SkSurface::NewRenderTarget(gGrFactory.get(config.ctxType), info,
+                                                         config.samples));
+        target->gl = gGrFactory.getGLContext(config.ctxType);
+    }
+#endif
+
+    if (Benchmark::kNonRendering_Backend != config.backend && !target->surface.get()) {
+        delete target;
+        return NULL;
+    }
+    return target;
+}
+
+// Creates targets for a benchmark and a set of configs.
+static void create_targets(SkTDArray<Target*>* targets, Benchmark* b,
+                           const SkTDArray<Config>& configs) {
+    for (int i = 0; i < configs.count(); ++i) {
+        if (Target* t = is_enabled(b, configs[i])) {
+            targets->push(t);
+        }
+        
+    }
 }
 
 static void fill_static_options(ResultsWriter* log) {
@@ -298,11 +354,10 @@ static void fill_gpu_options(ResultsWriter* log, SkGLContextHelper* ctx) {
 }
 #endif
 
-int tool_main(int argc, char** argv);
-int tool_main(int argc, char** argv) {
+int nanobench_main();
+int nanobench_main() {
     SetupCrashHandler();
     SkAutoGraphics ag;
-    SkCommandLineFlags::Parse(argc, argv);
 
     if (FLAGS_runOnce) {
         FLAGS_samples     = 1;
@@ -342,6 +397,9 @@ int tool_main(int argc, char** argv) {
         SkDebugf("loops\tmin\tmedian\tmean\tmax\tstddev\tsamples\tconfig\tbench\n");
     }
 
+    SkTDArray<Config> configs;
+    create_configs(&configs);
+
     for (const BenchRegistry* r = BenchRegistry::Head(); r != NULL; r = r->next()) {
         SkAutoTDelete<Benchmark> bench(r->factory()(NULL));
         if (SkCommandLineFlags::ShouldSkip(FLAGS_match, bench->getName())) {
@@ -349,7 +407,7 @@ int tool_main(int argc, char** argv) {
         }
 
         SkTDArray<Target*> targets;
-        create_targets(bench.get(), &targets);
+        create_targets(&targets, bench.get(), configs);
 
         if (!targets.isEmpty()) {
             log.bench(bench->getName(), bench->getSize().fX, bench->getSize().fY);
@@ -357,11 +415,11 @@ int tool_main(int argc, char** argv) {
         }
         for (int j = 0; j < targets.count(); j++) {
             SkCanvas* canvas = targets[j]->surface.get() ? targets[j]->surface->getCanvas() : NULL;
-            const char* config = targets[j]->config;
+            const char* config = targets[j]->config.name;
 
             const int loops =
 #if SK_SUPPORT_GPU
-                Benchmark::kGPU_Backend == targets[j]->backend
+                Benchmark::kGPU_Backend == targets[j]->config.backend
                 ? gpu_bench(targets[j]->gl, bench.get(), canvas, samples.get())
                 :
 #endif
@@ -376,7 +434,7 @@ int tool_main(int argc, char** argv) {
             Stats stats(samples.get(), FLAGS_samples);
             log.config(config);
 #if SK_SUPPORT_GPU
-            if (Benchmark::kGPU_Backend == targets[j]->backend) {
+            if (Benchmark::kGPU_Backend == targets[j]->config.backend) {
                 fill_gpu_options(&log, targets[j]->gl);
             }
 #endif
@@ -429,7 +487,8 @@ int tool_main(int argc, char** argv) {
 }
 
 #if !defined SK_BUILD_FOR_IOS
-int main(int argc, char * const argv[]) {
-    return tool_main(argc, (char**) argv);
+int main(int argc, char** argv) {
+    SkCommandLineFlags::Parse(argc, argv);
+    return nanobench_main();
 }
 #endif

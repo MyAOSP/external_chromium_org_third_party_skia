@@ -18,12 +18,19 @@
   ],
   'dependencies': [
     'experimental.gyp:experimental',
-    'flags.gyp:flags',
+    'flags.gyp:flags_common',
     'pdf.gyp:pdf',
     'skia_lib.gyp:skia_lib',
     'tools.gyp:picture_utils',
     'tools.gyp:resources',
     'tools.gyp:sk_tool_utils',
+  ],
+  'conditions': [
+    [ 'skia_android_framework == 1', {
+      'libraries': [
+        '-ldl',
+      ],
+    }],
   ],
   'sources': [
     '../tests/Test.cpp',
@@ -46,6 +53,7 @@
     '../tests/BlitRowTest.cpp',
     '../tests/BlurTest.cpp',
     '../tests/CachedDecodingPixelRefTest.cpp',
+    '../tests/CanvasStateHelpers.cpp',
     '../tests/CanvasStateTest.cpp',
     '../tests/CanvasTest.cpp',
     '../tests/ChecksumTest.cpp',

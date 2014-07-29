@@ -45,10 +45,9 @@ private:
     };
 
     void*                       fVertices;
-    int32_t                     fMaxVertices;
-    GrTexture*                  fCurrTexture;
     SkAutoTUnref<GrEffect>      fCachedEffect;
-    uint32_t                    fEffectTextureGenID;
+    // Used to check whether fCachedEffect is still valid.
+    uint32_t                    fEffectTextureUniqueID;
     int                         fCurrVertex;
     SkRect                      fVertexBounds;
 };
