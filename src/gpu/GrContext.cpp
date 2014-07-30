@@ -516,7 +516,9 @@ void GrContext::addExistingTextureToCache(GrTexture* texture) {
 
     // Conceptually, the cache entry is going to assume responsibility
     // for the creation ref. Assert refcnt == 1.
-    SkASSERT(texture->unique());
+    // Except that this also gets called when the texture is prematurely
+    // abandoned. In that case the ref count may be > 1.
+    // SkASSERT(texture->unique());
 
     if (fGpu->caps()->reuseScratchTextures() || NULL != texture->asRenderTarget()) {
         // Since this texture came from an AutoScratchTexture it should
@@ -746,10 +748,6 @@ static bool apply_aa_to_rect(GrDrawTarget* target,
     }
     const GrDrawState& drawState = target->getDrawState();
     if (drawState.getRenderTarget()->isMultisampled()) {
-        return false;
-    }
-
-    if (0 == strokeWidth && target->willUseHWAALines()) {
         return false;
     }
 

@@ -8,7 +8,6 @@
 #ifndef GrGpuGL_DEFINED
 #define GrGpuGL_DEFINED
 
-#include "GrBinHashKey.h"
 #include "GrDrawState.h"
 #include "GrGLContext.h"
 #include "GrGLIRect.h"
@@ -444,15 +443,7 @@ private:
         }
     } fHWBlendState;
 
-    struct {
-        TriState fMSAAEnabled;
-        TriState fSmoothLineEnabled;
-        void invalidate() {
-            fMSAAEnabled = kUnknown_TriState;
-            fSmoothLineEnabled = kUnknown_TriState;
-        }
-    } fHWAAState;
-
+    TriState fMSAAEnabled;
 
     GrGLProgram::MatrixState    fHWProjectionMatrixState;
 
