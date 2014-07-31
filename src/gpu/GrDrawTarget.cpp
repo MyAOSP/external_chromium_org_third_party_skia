@@ -615,9 +615,15 @@ void GrDrawTarget::removeGpuTraceMarker(const GrGpuTraceMarker* marker) {
 
 bool GrDrawTarget::canApplyCoverage() const {
     // we can correctly apply coverage if a) we have dual source blending
-    // or b) one of our blend optimizations applies.
+    // or b) one of our blend optimizations applies
+    // or c) the src, dst blend coeffs are 1,0 and we will read Dst Color
+    GrBlendCoeff srcCoeff;
+    GrBlendCoeff dstCoeff;
+    GrDrawState::BlendOptFlags flag = this->getDrawState().getBlendOpts(true, &srcCoeff, &dstCoeff);
     return this->caps()->dualSourceBlendingSupport() ||
-           GrDrawState::kNone_BlendOpt != this->getDrawState().getBlendOpts(true);
+           GrDrawState::kNone_BlendOpt != flag ||
+           (this->getDrawState().willEffectReadDstColor() &&
+            kOne_GrBlendCoeff == srcCoeff && kZero_GrBlendCoeff == dstCoeff);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1022,6 +1028,7 @@ void GrDrawTargetCaps::reset() {
     fDiscardRenderTargetSupport = false;
     fReuseScratchTextures = true;
     fGpuTracingSupport = false;
+    fCompressedTexSubImageSupport = false;
 
     fMapBufferFlags = kNone_MapFlags;
 
@@ -1047,6 +1054,7 @@ GrDrawTargetCaps& GrDrawTargetCaps::operator=(const GrDrawTargetCaps& other) {
     fDiscardRenderTargetSupport = other.fDiscardRenderTargetSupport;
     fReuseScratchTextures = other.fReuseScratchTextures;
     fGpuTracingSupport = other.fGpuTracingSupport;
+    fCompressedTexSubImageSupport = other.fCompressedTexSubImageSupport;
 
     fMapBufferFlags = other.fMapBufferFlags;
 
@@ -1096,6 +1104,7 @@ SkString GrDrawTargetCaps::dump() const {
     r.appendf("Discard Render Target Support: %s\n", gNY[fDiscardRenderTargetSupport]);
     r.appendf("Reuse Scratch Textures       : %s\n", gNY[fReuseScratchTextures]);
     r.appendf("Gpu Tracing Support          : %s\n", gNY[fGpuTracingSupport]);
+    r.appendf("Compressed Update Support    : %s\n", gNY[fCompressedTexSubImageSupport]);
     r.appendf("Max Texture Size             : %d\n", fMaxTextureSize);
     r.appendf("Max Render Target Size       : %d\n", fMaxRenderTargetSize);
     r.appendf("Max Sample Count             : %d\n", fMaxSampleCount);

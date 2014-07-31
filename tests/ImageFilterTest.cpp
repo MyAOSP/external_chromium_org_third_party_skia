@@ -262,8 +262,7 @@ static void test_crop_rects(SkBaseDevice* device, skiatest::Reporter* reporter) 
         SkIPoint offset;
         SkString str;
         str.printf("filter %d", static_cast<int>(i));
-        SkAutoTUnref<SkImageFilter::Cache> cache(SkImageFilter::Cache::Create(2));
-        SkImageFilter::Context ctx(SkMatrix::I(), SkIRect::MakeLargest(), cache.get());
+        SkImageFilter::Context ctx(SkMatrix::I(), SkIRect::MakeLargest(), NULL);
         REPORTER_ASSERT_MESSAGE(reporter, filter->filterImage(&proxy, bitmap, ctx,
                                 &result, &offset), str.c_str());
         REPORTER_ASSERT_MESSAGE(reporter, offset.fX == 20 && offset.fY == 30, str.c_str());
@@ -568,7 +567,7 @@ DEF_TEST(ImageFilterMatrix, reporter) {
     canvas.drawPicture(picture);
 }
 
-DEF_TEST(ImageFilterPictureImageFilter, reporter) {
+DEF_TEST(ImageFilterCrossProcessPictureImageFilter, reporter) {
     SkRTreeFactory factory;
     SkPictureRecorder recorder;
     SkCanvas* recordingCanvas = recorder.beginRecording(1, 1, &factory, 0);
@@ -625,6 +624,30 @@ DEF_TEST(ImageFilterPictureImageFilter, reporter) {
     pixel = *bitmap.getAddr32(0, 0);
     // The result here should not be green, since the filter draws nothing.
     REPORTER_ASSERT(reporter, pixel != SK_ColorGREEN);
+}
+
+DEF_TEST(ImageFilterClippedPictureImageFilter, reporter) {
+    SkRTreeFactory factory;
+    SkPictureRecorder recorder;
+    SkCanvas* recordingCanvas = recorder.beginRecording(1, 1, &factory, 0);
+
+    // Create an SkPicture which simply draws a green 1x1 rectangle.
+    SkPaint greenPaint;
+    greenPaint.setColor(SK_ColorGREEN);
+    recordingCanvas->drawRect(SkRect::Make(SkIRect::MakeWH(1, 1)), greenPaint);
+    SkAutoTUnref<SkPicture> picture(recorder.endRecording());
+
+    SkAutoTUnref<SkImageFilter> imageFilter(
+        SkPictureImageFilter::Create(picture.get()));
+
+    SkBitmap result;
+    SkIPoint offset;
+    SkImageFilter::Context ctx(SkMatrix::I(), SkIRect::MakeXYWH(1, 1, 1, 1), NULL);
+    SkBitmap bitmap;
+    bitmap.allocN32Pixels(2, 2);
+    SkBitmapDevice device(bitmap);
+    SkDeviceImageFilterProxy proxy(&device);
+    REPORTER_ASSERT(reporter, !imageFilter->filterImage(&proxy, bitmap, ctx, &result, &offset));
 }
 
 DEF_TEST(ImageFilterEmptySaveLayer, reporter) {

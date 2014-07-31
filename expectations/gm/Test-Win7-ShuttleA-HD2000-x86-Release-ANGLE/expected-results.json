@@ -550,10 +550,10 @@
       "allowed-digests": [
         [
           "bitmap-64bitMD5", 
-          6890339176809960518
+          7784555326813513893
         ]
       ], 
-      "reviewed-by-human": false
+      "reviewed-by-human": true
     }, 
     "bigmatrix_565.png": {
       "allowed-digests": [
@@ -816,7 +816,7 @@
       "allowed-digests": [
         [
           "bitmap-64bitMD5", 
-          10417602019872588029
+          7702289957265438175
         ]
       ], 
       "ignore-failure": false, 
@@ -1169,10 +1169,13 @@
       "allowed-digests": [
         [
           "bitmap-64bitMD5", 
-          7294639324157923250
+          5564289181496146035
         ]
       ], 
-      "reviewed-by-human": true
+      "bugs": [
+        2762
+      ], 
+      "reviewed-by-human": false
     }, 
     "bleed_gpu.png": {
       "allowed-digests": [
@@ -3222,6 +3225,15 @@
       ], 
       "ignore-failure": false
     }, 
+    "blurrect_gallery_angle.png": {
+      "allowed-digests": [
+        [
+          "bitmap-64bitMD5", 
+          12424138734353506606
+        ]
+      ], 
+      "reviewed-by-human": true
+    }, 
     "blurrect_inner_565.png": {
       "allowed-digests": [
         [
@@ -3493,10 +3505,10 @@
       "allowed-digests": [
         [
           "bitmap-64bitMD5", 
-          10988013427224104734
+          12469056507152539419
         ]
       ], 
-      "reviewed-by-human": false
+      "reviewed-by-human": true
     }, 
     "blurroundrect-WH[100x100]-unevenCorners_angle.png": {
       "allowed-digests": [
@@ -10607,7 +10619,7 @@
       "allowed-digests": [
         [
           "bitmap-64bitMD5", 
-          16926225104435755293
+          10227090825150464532
         ]
       ], 
       "reviewed-by-human": true
@@ -10661,7 +10673,7 @@
       "allowed-digests": [
         [
           "bitmap-64bitMD5", 
-          16926225104435755293
+          10227090825150464532
         ]
       ], 
       "reviewed-by-human": true
@@ -10715,7 +10727,7 @@
       "allowed-digests": [
         [
           "bitmap-64bitMD5", 
-          16926225104435755293
+          10227090825150464532
         ]
       ], 
       "reviewed-by-human": true
@@ -14363,10 +14375,10 @@
       "allowed-digests": [
         [
           "bitmap-64bitMD5", 
-          16570721013563827642
+          16893666949631983554
         ]
       ], 
-      "reviewed-by-human": false
+      "reviewed-by-human": true
     }, 
     "thinrects_565.png": {
       "allowed-digests": [

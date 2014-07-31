@@ -33,22 +33,6 @@
 ## epoger will rebaseline by 25 Dec 2013
 #gradtext
 
-# reed: bitmapfilters changed (labels) with hide_config CL, just need rebaselines
-bitmapfilters
-
-# humper:
-# Needs rebaselining after faster GPU blur patch lands
-megalooper_0x0
-megalooper_1x4
-megalooper_4x1
-bleed
-blurquickreject
-blurrects
-bigblurs
-
 #bungeman: there's now a fontmgr on android
 fontmgr_match
 fontmgr_iter
-
-# joshualitt added on Jul 29th, 2014
-texture_domain_effect
