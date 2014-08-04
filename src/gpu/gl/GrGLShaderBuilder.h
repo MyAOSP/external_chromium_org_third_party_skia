@@ -33,7 +33,6 @@ public:
     typedef GrTAllocator<GrGLShaderVar> VarArray;
     typedef GrGLProgramEffects::TextureSampler TextureSampler;
     typedef GrGLProgramEffects::TransformedCoordsArray TransformedCoordsArray;
-    typedef GrGLProgramDataManager::BuilderUniform BuilderUniform;
 
     enum ShaderVisibility {
         kVertex_Visibility   = 0x1,
@@ -44,7 +43,7 @@ public:
     typedef GrGLProgramDataManager::UniformHandle UniformHandle;
 
     // Handles for program uniforms (other than per-effect uniforms)
-    struct UniformHandles {
+    struct BuiltinUniformHandles {
         UniformHandle       fViewMatrixUni;
         UniformHandle       fRTAdjustmentUni;
         UniformHandle       fColorUni;
@@ -60,42 +59,39 @@ public:
         UniformHandle       fDstCopySamplerUni;
     };
 
-    struct GenProgramOutput {
-        GenProgramOutput()
-            : fColorEffects(NULL)
-            , fCoverageEffects(NULL)
-            , fHasVertexShader(false)
-            , fTexCoordSetCnt(0)
-            , fProgramID(0) {}
-
-        GenProgramOutput(const GenProgramOutput& other) {
-            *this = other;
-        }
-
-        GenProgramOutput& operator=(const GenProgramOutput& other) {
-            fColorEffects.reset(SkRef(other.fColorEffects.get()));
-            fCoverageEffects.reset(SkRef(other.fCoverageEffects.get()));
-            fUniformHandles = other.fUniformHandles;
-            fHasVertexShader = other.fHasVertexShader;
-            fTexCoordSetCnt = other.fTexCoordSetCnt;
-            fProgramID = other.fProgramID;
-            return *this;
-        }
-
-        SkAutoTUnref<GrGLProgramEffects> fColorEffects;
-        SkAutoTUnref<GrGLProgramEffects> fCoverageEffects;
-        UniformHandles                   fUniformHandles;
-        bool                             fHasVertexShader;
-        int                              fTexCoordSetCnt;
-        GrGLuint                         fProgramID;
+    struct UniformInfo {
+        GrGLShaderVar fVariable;
+        uint32_t      fVisibility;
+        GrGLint       fLocation;
     };
 
-    static bool GenProgram(GrGpuGL* gpu,
-                           GrGLProgramDataManager* pdman,
-                           const GrGLProgramDesc& desc,
-                           const GrEffectStage* inColorStages[],
-                           const GrEffectStage* inCoverageStages[],
-                           GenProgramOutput* output);
+    // This uses an allocator rather than array so that the GrGLShaderVars don't move in memory
+    // after they are inserted. Users of GrGLShaderBuilder get refs to the vars and ptrs to their
+    // name strings. Otherwise, we'd have to hand out copies.
+    typedef GrTAllocator<UniformInfo> UniformInfoArray;
+
+    /** Generates a shader program.
+     *
+     * The program implements what is specified in the stages given as input.
+     * After successful generation, the builder result objects are available
+     * to be used.
+     * @return true if generation was successful.
+     */
+    bool genProgram(const GrEffectStage* inColorStages[],
+                    const GrEffectStage* inCoverageStages[]);
+
+    // Below are the results of the shader generation.
+
+    GrGLProgramEffects* getColorEffects() const { SkASSERT(fProgramID); return fColorEffects.get(); }
+    GrGLProgramEffects* getCoverageEffects() const { SkASSERT(fProgramID); return fCoverageEffects.get(); }
+    const BuiltinUniformHandles& getBuiltinUniformHandles() const {
+        SkASSERT(fProgramID);
+        return fUniformHandles;
+    }
+    GrGLuint getProgramID() const { SkASSERT(fProgramID); return fProgramID; }
+    bool hasVertexShader() const { SkASSERT(fProgramID); return fHasVertexShader; }
+    int getTexCoordSetCount() const { SkASSERT(fProgramID); return fTexCoordSetCnt; }
+    const UniformInfoArray& getUniformInfos() const { return fUniforms; }
 
     virtual ~GrGLShaderBuilder() {}
 
@@ -194,7 +190,7 @@ public:
                                                           const char** outName = NULL);
 
     const GrGLShaderVar& getUniformVariable(GrGLProgramDataManager::UniformHandle u) const {
-        return fProgramDataManager->getBuilderUniform(fUniforms, u).fVariable;
+        return fUniforms[u.toShaderBuilderIndex()].fVariable;
     }
 
     /**
@@ -241,7 +237,7 @@ public:
     };
 
 protected:
-    GrGLShaderBuilder(GrGpuGL*, GrGLProgramDataManager*, const GrGLProgramDesc&);
+    GrGLShaderBuilder(GrGpuGL*, const GrGLProgramDesc&);
 
     GrGpuGL* gpu() const { return fGpu; }
 
@@ -264,15 +260,18 @@ protected:
 
     virtual bool compileAndAttachShaders(GrGLuint programId, SkTDArray<GrGLuint>* shaderIds) const;
 
-    virtual void bindProgramLocations(GrGLuint programId) const;
+    virtual void bindProgramLocations(GrGLuint programId);
+    void resolveProgramLocations(GrGLuint programId);
 
     void appendDecls(const VarArray&, SkString*) const;
     void appendUniformDecls(ShaderVisibility, SkString*) const;
 
-    const GenProgramOutput& getOutput() const { return fOutput; }
-
-    GenProgramOutput fOutput;
-
+    SkAutoTUnref<GrGLProgramEffects> fColorEffects;
+    SkAutoTUnref<GrGLProgramEffects> fCoverageEffects;
+    BuiltinUniformHandles            fUniformHandles;
+    bool                             fHasVertexShader;
+    int                              fTexCoordSetCnt;
+    GrGLuint                         fProgramID;
 private:
     class CodeStage : SkNoncopyable {
     public:
@@ -325,8 +324,6 @@ private:
         const GrEffectStage*    fEffectStage;
     } fCodeStage;
 
-    bool genProgram(const GrEffectStage* colorStages[], const GrEffectStage* coverageStages[]);
-
     /**
      * The base class will emit the fragment code that precedes the per-effect code and then call
      * this function. The subclass can use it to insert additional fragment code that should
@@ -371,8 +368,7 @@ private:
      */
     enum GLSLPrivateFeature {
         kFragCoordConventions_GLSLPrivateFeature = kLastGLSLFeature + 1,
-        kEXTShaderFramebufferFetch_GLSLPrivateFeature,
-        kNVShaderFramebufferFetch_GLSLPrivateFeature,
+        kLastGLSLPrivateFeature = kFragCoordConventions_GLSLPrivateFeature
     };
     bool enablePrivateFeature(GLSLPrivateFeature);
 
@@ -396,13 +392,12 @@ private:
 
     const GrGLProgramDesc&                  fDesc;
     GrGpuGL*                                fGpu;
-    SkAutoTUnref<GrGLProgramDataManager>    fProgramDataManager;
     uint32_t                                fFSFeaturesAddedMask;
     SkString                                fFSFunctions;
     SkString                                fFSExtensions;
     VarArray                                fFSInputs;
     VarArray                                fFSOutputs;
-    GrGLProgramDataManager::BuilderUniformArray fUniforms;
+    UniformInfoArray                        fUniforms;
 
     SkString                                fFSCode;
 
@@ -417,7 +412,7 @@ private:
 
 class GrGLFullShaderBuilder : public GrGLShaderBuilder {
 public:
-    GrGLFullShaderBuilder(GrGpuGL*, GrGLProgramDataManager*, const GrGLProgramDesc&);
+    GrGLFullShaderBuilder(GrGpuGL*, const GrGLProgramDesc&);
 
     /**
      * Called by GrGLEffects to add code to one of the shaders.
@@ -474,7 +469,7 @@ private:
     virtual bool compileAndAttachShaders(GrGLuint programId,
                                          SkTDArray<GrGLuint>* shaderIds) const SK_OVERRIDE;
 
-    virtual void bindProgramLocations(GrGLuint programId) const SK_OVERRIDE;
+    virtual void bindProgramLocations(GrGLuint programId) SK_OVERRIDE;
 
     VarArray                            fVSAttrs;
     VarArray                            fVSOutputs;
@@ -502,7 +497,7 @@ private:
 
 class GrGLFragmentOnlyShaderBuilder : public GrGLShaderBuilder {
 public:
-    GrGLFragmentOnlyShaderBuilder(GrGpuGL*, GrGLProgramDataManager*, const GrGLProgramDesc&);
+    GrGLFragmentOnlyShaderBuilder(GrGpuGL*, const GrGLProgramDesc&);
 
     int addTexCoordSets(int count);
 

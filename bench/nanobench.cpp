@@ -9,10 +9,13 @@
 
 #include "Benchmark.h"
 #include "CrashHandler.h"
+#include "GMBench.h"
 #include "ResultsWriter.h"
+#include "SKPBench.h"
 #include "Stats.h"
 #include "Timer.h"
 
+#include "SkOSFile.h"
 #include "SkCanvas.h"
 #include "SkCommonFlags.h"
 #include "SkForceLinking.h"
@@ -47,6 +50,9 @@ DEFINE_int32(maxCalibrationAttempts, 3,
 DEFINE_int32(maxLoops, 1000000, "Never run a bench more times than this.");
 DEFINE_string(key, "", "Space-separated key/value pairs to add to JSON.");
 DEFINE_string(gitHash, "", "Git hash to add to JSON.");
+
+DEFINE_string(clip, "0,0,1000,1000", "Clip for SKPs.");
+DEFINE_string(scales, "1.0", "Space-separated scales for SKPs.");
 
 static SkString humanize(double ms) {
     if (ms > 1e+3) return SkStringPrintf("%.3gs",  ms/1e3);
@@ -239,7 +245,7 @@ static bool is_gpu_config_allowed(const char* name, GrContextFactory::GLContextT
 #define kBogusGLContextType GrContextFactory::kNative_GLContextType
 #else
 #define kBogusGLContextType 0
-#endif 
+#endif
 
 // Append all configs that are enabled and supported.
 static void create_configs(SkTDArray<Config>* configs) {
@@ -248,7 +254,7 @@ static void create_configs(SkTDArray<Config>* configs) {
             Config config = { #name, Benchmark::backend, color, alpha, 0, kBogusGLContextType };  \
             configs->push(config);                                                                \
         }
-         
+
     if (FLAGS_cpu) {
         CPU_CONFIG(nonrendering, kNonRendering_Backend, kUnknown_SkColorType, kUnpremul_SkAlphaType)
         CPU_CONFIG(8888, kRaster_Backend, kN32_SkColorType, kPremul_SkAlphaType)
@@ -267,7 +273,7 @@ static void create_configs(SkTDArray<Config>* configs) {
                 GrContextFactory::ctxType };                                     \
             configs->push(config);                                               \
         }
-         
+
     if (FLAGS_gpu) {
         GPU_CONFIG(gpu, kNative_GLContextType, 0)
         GPU_CONFIG(msaa4, kNative_GLContextType, 4)
@@ -319,7 +325,7 @@ static void create_targets(SkTDArray<Target*>* targets, Benchmark* b,
         if (Target* t = is_enabled(b, configs[i])) {
             targets->push(t);
         }
-        
+
     }
 }
 
@@ -353,6 +359,112 @@ static void fill_gpu_options(ResultsWriter* log, SkGLContextHelper* ctx) {
     log->configOption("GL_SHADING_LANGUAGE_VERSION", (const char*) version);
 }
 #endif
+
+class BenchmarkStream {
+public:
+    BenchmarkStream() : fBenches(BenchRegistry::Head())
+                      , fGMs(skiagm::GMRegistry::Head())
+                      , fCurrentScale(0)
+                      , fCurrentSKP(0) {
+        for (int i = 0; i < FLAGS_skps.count(); i++) {
+            if (SkStrEndsWith(FLAGS_skps[i], ".skp")) {
+                fSKPs.push_back() = FLAGS_skps[i];
+            } else {
+                SkOSFile::Iter it(FLAGS_skps[i], ".skp");
+                SkString path;
+                while (it.next(&path)) {
+                    fSKPs.push_back() = SkOSPath::Join(FLAGS_skps[0], path.c_str());
+                }
+            }
+        }
+
+        if (4 != sscanf(FLAGS_clip[0], "%d,%d,%d,%d",
+                        &fClip.fLeft, &fClip.fTop, &fClip.fRight, &fClip.fBottom)) {
+            SkDebugf("Can't parse %s from --clip as an SkIRect.\n", FLAGS_clip[0]);
+            exit(1);
+        }
+
+        for (int i = 0; i < FLAGS_scales.count(); i++) {
+            if (1 != sscanf(FLAGS_scales[i], "%f", &fScales.push_back())) {
+                SkDebugf("Can't parse %s from --scales as an SkScalar.\n", FLAGS_scales[i]);
+                exit(1);
+            }
+        }
+    }
+
+    Benchmark* next() {
+        if (fBenches) {
+            Benchmark* bench = fBenches->factory()(NULL);
+            fBenches = fBenches->next();
+            fSourceType = "bench";
+            return bench;
+        }
+
+        while (fGMs) {
+            SkAutoTDelete<skiagm::GM> gm(fGMs->factory()(NULL));
+            fGMs = fGMs->next();
+            if (gm->getFlags() & skiagm::GM::kAsBench_Flag) {
+                fSourceType = "gm";
+                return SkNEW_ARGS(GMBench, (gm.detach()));
+            }
+        }
+
+        while (fCurrentScale < fScales.count()) {
+            while (fCurrentSKP < fSKPs.count()) {
+                const SkString& path = fSKPs[fCurrentSKP++];
+
+                // Not strictly necessary, as it will be checked again later,
+                // but helps to avoid a lot of pointless work if we're going to skip it.
+                if (SkCommandLineFlags::ShouldSkip(FLAGS_match, path.c_str())) {
+                    continue;
+                }
+
+                SkAutoTUnref<SkStream> stream(SkStream::NewFromFile(path.c_str()));
+                if (stream.get() == NULL) {
+                    SkDebugf("Could not read %s.\n", path.c_str());
+                    exit(1);
+                }
+
+                SkAutoTUnref<SkPicture> pic(SkPicture::CreateFromStream(stream.get()));
+                if (pic.get() == NULL) {
+                    SkDebugf("Could not read %s as an SkPicture.\n", path.c_str());
+                    exit(1);
+                }
+
+                SkString name = SkOSPath::Basename(path.c_str());
+
+                fSourceType = "skp";
+                return SkNEW_ARGS(SKPBench,
+                        (name.c_str(), pic.get(), fClip, fScales[fCurrentScale]));
+            }
+            fCurrentSKP = 0;
+            fCurrentScale++;
+        }
+
+        return NULL;
+    }
+
+    void fillCurrentOptions(ResultsWriter* log) const {
+        log->configOption("source_type", fSourceType);
+        if (0 == strcmp(fSourceType, "skp")) {
+            log->configOption("clip",
+                    SkStringPrintf("%d %d %d %d", fClip.fLeft, fClip.fTop,
+                                                  fClip.fRight, fClip.fBottom).c_str());
+            log->configOption("scale", SkStringPrintf("%.2g", fScales[fCurrentScale]).c_str());
+        }
+    }
+
+private:
+    const BenchRegistry* fBenches;
+    const skiagm::GMRegistry* fGMs;
+    SkIRect            fClip;
+    SkTArray<SkScalar> fScales;
+    SkTArray<SkString> fSKPs;
+
+    const char* fSourceType;
+    int fCurrentScale;
+    int fCurrentSKP;
+};
 
 int nanobench_main();
 int nanobench_main() {
@@ -400,8 +512,9 @@ int nanobench_main() {
     SkTDArray<Config> configs;
     create_configs(&configs);
 
-    for (const BenchRegistry* r = BenchRegistry::Head(); r != NULL; r = r->next()) {
-        SkAutoTDelete<Benchmark> bench(r->factory()(NULL));
+    BenchmarkStream benchStream;
+    while (Benchmark* b = benchStream.next()) {
+        SkAutoTDelete<Benchmark> bench(b);
         if (SkCommandLineFlags::ShouldSkip(FLAGS_match, bench->getName())) {
             continue;
         }
@@ -416,6 +529,14 @@ int nanobench_main() {
         for (int j = 0; j < targets.count(); j++) {
             SkCanvas* canvas = targets[j]->surface.get() ? targets[j]->surface->getCanvas() : NULL;
             const char* config = targets[j]->config.name;
+
+#if SK_DEBUG
+            // skia:2797  Some SKPs SkASSERT in debug mode.  Skip them for now.
+            if (0 == strcmp("565", config) && SkStrContains(bench->getName(), ".skp")) {
+                SkDebugf("Skipping 565 %s.  See skia:2797\n", bench->getName());
+                continue;
+            }
+#endif
 
             const int loops =
 #if SK_SUPPORT_GPU
@@ -433,6 +554,7 @@ int nanobench_main() {
 
             Stats stats(samples.get(), FLAGS_samples);
             log.config(config);
+            benchStream.fillCurrentOptions(&log);
 #if SK_SUPPORT_GPU
             if (Benchmark::kGPU_Backend == targets[j]->config.backend) {
                 fill_gpu_options(&log, targets[j]->gl);
