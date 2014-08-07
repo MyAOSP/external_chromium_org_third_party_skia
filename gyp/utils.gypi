@@ -8,9 +8,9 @@
 {
     'sources': [
         # Classes for a threadpool.
-        '<(skia_include_path)/utils/SkCondVar.h',
-        '<(skia_include_path)/utils/SkRunnable.h',
-        '<(skia_include_path)/utils/SkThreadPool.h',
+        '<(skia_src_path)/utils/SkCondVar.h',
+        '<(skia_src_path)/utils/SkRunnable.h',
+        '<(skia_src_path)/utils/SkThreadPool.h',
         '<(skia_src_path)/utils/SkCondVar.cpp',
 
         '<(skia_include_path)/utils/SkBoundaryPatch.h',
@@ -78,6 +78,8 @@
         '<(skia_src_path)/utils/SkParseColor.cpp',
         '<(skia_src_path)/utils/SkParsePath.cpp',
         '<(skia_src_path)/utils/SkPictureUtils.cpp',
+        '<(skia_src_path)/utils/SkPatchUtils.cpp',
+        '<(skia_src_path)/utils/SkPatchUtils.h',
         '<(skia_src_path)/utils/SkPathUtils.cpp',
         '<(skia_src_path)/utils/SkProxyCanvas.cpp',
         '<(skia_src_path)/utils/SkSHA1.cpp',

@@ -49,19 +49,7 @@ public:
     /**
      * Copies another draw state with a preconcat to the view matrix.
      **/
-    GrDrawState(const GrDrawState& state, const SkMatrix& preConcatMatrix) {
-        SkDEBUGCODE(fBlockEffectRemovalCnt = 0;)
-        *this = state;
-        if (!preConcatMatrix.isIdentity()) {
-            for (int i = 0; i < fColorStages.count(); ++i) {
-                fColorStages[i].localCoordChange(preConcatMatrix);
-            }
-            for (int i = 0; i < fCoverageStages.count(); ++i) {
-                fCoverageStages[i].localCoordChange(preConcatMatrix);
-            }
-            this->invalidateBlendOptFlags();
-        }
-    }
+    GrDrawState(const GrDrawState& state, const SkMatrix& preConcatMatrix);
 
     virtual ~GrDrawState() { SkASSERT(0 == fBlockEffectRemovalCnt); }
 
@@ -151,81 +139,15 @@ public:
      */
      class AutoVertexAttribRestore {
      public:
-         AutoVertexAttribRestore(GrDrawState* drawState) {
-             SkASSERT(NULL != drawState);
-             fDrawState = drawState;
-             fVAPtr = drawState->fVAPtr;
-             fVACount = drawState->fVACount;
-             fDrawState->setDefaultVertexAttribs();
-         }
+         AutoVertexAttribRestore(GrDrawState* drawState);
 
-         ~AutoVertexAttribRestore(){
-             fDrawState->setVertexAttribs(fVAPtr, fVACount);
-         }
+         ~AutoVertexAttribRestore() { fDrawState->setVertexAttribs(fVAPtr, fVACount); }
 
      private:
          GrDrawState*          fDrawState;
          const GrVertexAttrib* fVAPtr;
          int                   fVACount;
      };
-
-    /**
-     * Accessing positions, local coords, or colors, of a vertex within an array is a hassle
-     * involving casts and simple math. These helpers exist to keep GrDrawTarget clients' code a bit
-     * nicer looking.
-     */
-
-    /**
-     * Gets a pointer to a GrPoint of a vertex's position or texture
-     * coordinate.
-     * @param vertices      the vertex array
-     * @param vertexIndex   the index of the vertex in the array
-     * @param vertexSize    the size of each vertex in the array
-     * @param offset        the offset in bytes of the vertex component.
-     *                      Defaults to zero (corresponding to vertex position)
-     * @return pointer to the vertex component as a GrPoint
-     */
-    static SkPoint* GetVertexPoint(void* vertices,
-                                   int vertexIndex,
-                                   int vertexSize,
-                                   int offset = 0) {
-        intptr_t start = GrTCast<intptr_t>(vertices);
-        return GrTCast<SkPoint*>(start + offset +
-                                 vertexIndex * vertexSize);
-    }
-    static const SkPoint* GetVertexPoint(const void* vertices,
-                                         int vertexIndex,
-                                         int vertexSize,
-                                         int offset = 0) {
-        intptr_t start = GrTCast<intptr_t>(vertices);
-        return GrTCast<const SkPoint*>(start + offset +
-                                       vertexIndex * vertexSize);
-    }
-
-    /**
-     * Gets a pointer to a GrColor inside a vertex within a vertex array.
-     * @param vertices      the vetex array
-     * @param vertexIndex   the index of the vertex in the array
-     * @param vertexSize    the size of each vertex in the array
-     * @param offset        the offset in bytes of the vertex color
-     * @return pointer to the vertex component as a GrColor
-     */
-    static GrColor* GetVertexColor(void* vertices,
-                                   int vertexIndex,
-                                   int vertexSize,
-                                   int offset) {
-        intptr_t start = GrTCast<intptr_t>(vertices);
-        return GrTCast<GrColor*>(start + offset +
-                                 vertexIndex * vertexSize);
-    }
-    static const GrColor* GetVertexColor(const void* vertices,
-                                         int vertexIndex,
-                                         int vertexSize,
-                                         int offset) {
-        const intptr_t start = GrTCast<intptr_t>(vertices);
-        return GrTCast<const GrColor*>(start + offset +
-                                       vertexIndex * vertexSize);
-    }
 
     /// @}
 
@@ -266,38 +188,6 @@ public:
     void setAlpha(uint8_t a) {
         this->setColor((a << 24) | (a << 16) | (a << 8) | a);
     }
-
-    /**
-     * Constructor sets the color to be 'color' which is undone by the destructor.
-     */
-    class AutoColorRestore : public ::SkNoncopyable {
-    public:
-        AutoColorRestore() : fDrawState(NULL), fOldColor(0) {}
-
-        AutoColorRestore(GrDrawState* drawState, GrColor color) {
-            fDrawState = NULL;
-            this->set(drawState, color);
-        }
-
-        void reset() {
-            if (NULL != fDrawState) {
-                fDrawState->setColor(fOldColor);
-                fDrawState = NULL;
-            }
-        }
-
-        void set(GrDrawState* drawState, GrColor color) {
-            this->reset();
-            fDrawState = drawState;
-            fOldColor = fDrawState->getColor();
-            fDrawState->setColor(color);
-        }
-
-        ~AutoColorRestore() { this->reset(); }
-    private:
-        GrDrawState*    fDrawState;
-        GrColor         fOldColor;
-    };
 
     /// @}
 
@@ -396,27 +286,7 @@ public:
 
         ~AutoRestoreEffects() { this->set(NULL); }
 
-        void set(GrDrawState* ds) {
-            if (NULL != fDrawState) {
-                int m = fDrawState->fColorStages.count() - fColorEffectCnt;
-                SkASSERT(m >= 0);
-                fDrawState->fColorStages.pop_back_n(m);
-
-                int n = fDrawState->fCoverageStages.count() - fCoverageEffectCnt;
-                SkASSERT(n >= 0);
-                fDrawState->fCoverageStages.pop_back_n(n);
-                if (m + n > 0) {
-                    fDrawState->invalidateBlendOptFlags();
-                }
-                SkDEBUGCODE(--fDrawState->fBlockEffectRemovalCnt;)
-            }
-            fDrawState = ds;
-            if (NULL != ds) {
-                fColorEffectCnt = ds->fColorStages.count();
-                fCoverageEffectCnt = ds->fCoverageStages.count();
-                SkDEBUGCODE(++ds->fBlockEffectRemovalCnt;)
-            }
-        }
+        void set(GrDrawState* ds);
 
         bool isSet() const { return NULL != fDrawState; }
 
@@ -876,93 +746,29 @@ public:
 
     ///////////////////////////////////////////////////////////////////////////
 
-    bool operator ==(const GrDrawState& that) const {
-        if (fRenderTarget.get() != that.fRenderTarget.get() ||
-            fColorStages.count() != that.fColorStages.count() ||
-            fCoverageStages.count() != that.fCoverageStages.count() ||
-            fColor != that.fColor ||
-            !fViewMatrix.cheapEqualTo(that.fViewMatrix) ||
-            fSrcBlend != that.fSrcBlend ||
-            fDstBlend != that.fDstBlend ||
-            fBlendConstant != that.fBlendConstant ||
-            fFlagBits != that.fFlagBits ||
-            fVACount != that.fVACount ||
-            memcmp(fVAPtr, that.fVAPtr, fVACount * sizeof(GrVertexAttrib)) ||
-            fStencilSettings != that.fStencilSettings ||
-            fCoverage != that.fCoverage ||
-            fDrawFace != that.fDrawFace) {
-            return false;
-        }
-        for (int i = 0; i < fColorStages.count(); i++) {
-            if (fColorStages[i] != that.fColorStages[i]) {
-                return false;
-            }
-        }
-        for (int i = 0; i < fCoverageStages.count(); i++) {
-            if (fCoverageStages[i] != that.fCoverageStages[i]) {
-                return false;
-            }
-        }
-        SkASSERT(0 == memcmp(fFixedFunctionVertexAttribIndices,
-                             that.fFixedFunctionVertexAttribIndices,
-                             sizeof(fFixedFunctionVertexAttribIndices)));
-        return true;
-    }
-    bool operator !=(const GrDrawState& s) const { return !(*this == s); }
+    /** Return type for CombineIfPossible. */
+    enum CombinedState {
+        /** The GrDrawStates cannot be combined. */
+        kIncompatible_CombinedState,
+        /** Either draw state can be used in place of the other. */
+        kAOrB_CombinedState,
+        /** Use the first draw state. */
+        kA_CombinedState,
+        /** Use the second draw state. */
+        kB_CombinedState,
+    };
 
-    GrDrawState& operator= (const GrDrawState& that) {
-        SkASSERT(0 == fBlockEffectRemovalCnt || 0 == this->numTotalStages());
-        this->setRenderTarget(that.fRenderTarget.get());
-        fColor = that.fColor;
-        fViewMatrix = that.fViewMatrix;
-        fSrcBlend = that.fSrcBlend;
-        fDstBlend = that.fDstBlend;
-        fBlendConstant = that.fBlendConstant;
-        fFlagBits = that.fFlagBits;
-        fVACount = that.fVACount;
-        fVAPtr = that.fVAPtr;
-        fStencilSettings = that.fStencilSettings;
-        fCoverage = that.fCoverage;
-        fDrawFace = that.fDrawFace;
-        fColorStages = that.fColorStages;
-        fCoverageStages = that.fCoverageStages;
-        fOptSrcBlend = that.fOptSrcBlend;
-        fOptDstBlend = that.fOptDstBlend;
-        fBlendOptFlags = that.fBlendOptFlags;
+    /** This function determines whether the GrDrawStates used for two draws can be combined into
+        a single GrDrawState. This is used to avoid storing redundant GrDrawStates and to determine
+        if draws can be batched. The return value indicates whether combining is possible and, if
+        so, which of the two inputs should be used. */
+    static CombinedState CombineIfPossible(const GrDrawState& a, const GrDrawState& b);
 
-        memcpy(fFixedFunctionVertexAttribIndices,
-               that.fFixedFunctionVertexAttribIndices,
-               sizeof(fFixedFunctionVertexAttribIndices));
-        return *this;
-    }
+    GrDrawState& operator= (const GrDrawState& that);
 
 private:
 
-    void onReset(const SkMatrix* initialViewMatrix) {
-        SkASSERT(0 == fBlockEffectRemovalCnt || 0 == this->numTotalStages());
-        fColorStages.reset();
-        fCoverageStages.reset();
-
-        fRenderTarget.reset(NULL);
-
-        this->setDefaultVertexAttribs();
-
-        fColor = 0xffffffff;
-        if (NULL == initialViewMatrix) {
-            fViewMatrix.reset();
-        } else {
-            fViewMatrix = *initialViewMatrix;
-        }
-        fSrcBlend = kOne_GrBlendCoeff;
-        fDstBlend = kZero_GrBlendCoeff;
-        fBlendConstant = 0x0;
-        fFlagBits = 0x0;
-        fStencilSettings.setDisabled();
-        fCoverage = 0xffffffff;
-        fDrawFace = kBoth_DrawFace;
-
-        this->invalidateBlendOptFlags();
-    }
+    void onReset(const SkMatrix* initialViewMatrix);
 
     BlendOptFlags calcBlendOpts(bool forceCoverage = false,
                                GrBlendCoeff* srcCoeff = NULL,
