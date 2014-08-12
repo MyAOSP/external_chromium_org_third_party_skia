@@ -136,8 +136,8 @@ public:
             cannonicalFamilyName = &family.fNames[0];
         }
         // TODO? make this lazy
-        for (int i = 0; i < family.fFontFiles.count(); ++i) {
-            const FontFileInfo& fontFile = family.fFontFiles[i];
+        for (int i = 0; i < family.fFonts.count(); ++i) {
+            const FontFileInfo& fontFile = family.fFonts[i];
 
             SkString pathName;
             get_path_for_sys_fonts(basePath, fontFile.fFileName, &pathName);
@@ -506,7 +506,7 @@ SkFontMgr* SkFontMgr::Factory() {
     const char* basePath;
     SkGetTestFontConfiguration(&mainConfigFile, &fallbackConfigFile, &basePath);
     if (mainConfigFile) {
-        SkNEW_ARGS(SkFontMgr_Android, (mainConfigFile, fallbackConfigFile, basePath));
+        return SkNEW_ARGS(SkFontMgr_Android, (mainConfigFile, fallbackConfigFile, basePath));
     }
 
     return SkNEW(SkFontMgr_Android);
