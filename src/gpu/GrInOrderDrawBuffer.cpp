@@ -13,6 +13,7 @@
 #include "GrGpu.h"
 #include "GrIndexBuffer.h"
 #include "GrPath.h"
+#include "GrPathRange.h"
 #include "GrRenderTarget.h"
 #include "GrTemplates.h"
 #include "GrTexture.h"
@@ -136,11 +137,8 @@ static bool cmd_has_trace_marker(uint8_t cmd) {
 }
 
 void GrInOrderDrawBuffer::onDrawRect(const SkRect& rect,
-                                     const SkMatrix* matrix,
                                      const SkRect* localRect,
                                      const SkMatrix* localMatrix) {
-    GrDrawState::AutoColorRestore acr;
-
     GrDrawState* drawState = this->drawState();
 
     GrColor color = drawState->getColor();
@@ -150,14 +148,6 @@ void GrInOrderDrawBuffer::onDrawRect(const SkRect& rect,
                    this->caps()->dualSourceBlendingSupport() || drawState->hasSolidCoverage(),
                    NULL != localRect,
                    &colorOffset, &localOffset);
-    if (colorOffset >= 0) {
-        // We set the draw state's color to white here. This is done so that any batching performed
-        // in our subclass's onDraw() won't get a false from GrDrawState::op== due to a color
-        // mismatch. TODO: Once vertex layout is owned by GrDrawState it should skip comparing the
-        // constant color in its op== when the kColor layout bit is set and then we can remove
-        // this.
-        acr.set(drawState, 0xFFFFFFFF);
-    }
 
     AutoReleaseGeometry geo(this, 4, 0);
     if (!geo.succeeded()) {
@@ -166,13 +156,8 @@ void GrInOrderDrawBuffer::onDrawRect(const SkRect& rect,
     }
 
     // Go to device coords to allow batching across matrix changes
-    SkMatrix combinedMatrix;
-    if (NULL != matrix) {
-        combinedMatrix = *matrix;
-    } else {
-        combinedMatrix.reset();
-    }
-    combinedMatrix.postConcat(drawState->getViewMatrix());
+    SkMatrix matrix = drawState->getViewMatrix();
+
     // When the caller has provided an explicit source rect for a stage then we don't want to
     // modify that stage's matrix. Otherwise if the effect is generating its source rect from
     // the vertex positions then we have to account for the view matrix change.
@@ -184,7 +169,7 @@ void GrInOrderDrawBuffer::onDrawRect(const SkRect& rect,
     size_t vsize = drawState->getVertexSize();
 
     geo.positions()->setRectFan(rect.fLeft, rect.fTop, rect.fRight, rect.fBottom, vsize);
-    combinedMatrix.mapPointsWithStride(geo.positions(), vsize, 4);
+    matrix.mapPointsWithStride(geo.positions(), vsize, 4);
 
     SkRect devBounds;
     // since we already computed the dev verts, set the bounds hint. This will help us avoid
@@ -355,9 +340,7 @@ void GrInOrderDrawBuffer::onDraw(const DrawInfo& info) {
     if (this->needsNewClip()) {
        this->recordClip();
     }
-    if (this->needsNewState()) {
-        this->recordState();
-    }
+    this->recordStateIfNecessary();
 
     DrawRecord* draw;
     if (info.isInstanced()) {
@@ -419,10 +402,9 @@ GrInOrderDrawBuffer::DrawPaths::~DrawPaths() {
     if (fTransforms) {
         SkDELETE_ARRAY(fTransforms);
     }
-    for (int i = 0; i < fPathCount; ++i) {
-        fPaths[i]->unref();
+    if (fIndices) {
+        SkDELETE_ARRAY(fIndices);
     }
-    SkDELETE_ARRAY(fPaths);
 }
 
 void GrInOrderDrawBuffer::onStencilPath(const GrPath* path, SkPath::FillType fill) {
@@ -430,9 +412,7 @@ void GrInOrderDrawBuffer::onStencilPath(const GrPath* path, SkPath::FillType fil
         this->recordClip();
     }
     // Only compare the subset of GrDrawState relevant to path stenciling?
-    if (this->needsNewState()) {
-        this->recordState();
-    }
+    this->recordStateIfNecessary();
     StencilPath* sp = this->recordStencilPath();
     sp->fPath.reset(path);
     path->ref();
@@ -445,9 +425,7 @@ void GrInOrderDrawBuffer::onDrawPath(const GrPath* path,
         this->recordClip();
     }
     // TODO: Only compare the subset of GrDrawState relevant to path covering?
-    if (this->needsNewState()) {
-        this->recordState();
-    }
+    this->recordStateIfNecessary();
     DrawPath* cp = this->recordDrawPath();
     cp->fPath.reset(path);
     path->ref();
@@ -457,32 +435,30 @@ void GrInOrderDrawBuffer::onDrawPath(const GrPath* path,
     }
 }
 
-void GrInOrderDrawBuffer::onDrawPaths(int pathCount, const GrPath** paths,
-                                      const SkMatrix* transforms,
-                                      SkPath::FillType fill,
-                                      SkStrokeRec::Style stroke,
-                                      const GrDeviceCoordTexture* dstCopy) {
-    SkASSERT(pathCount);
+void GrInOrderDrawBuffer::onDrawPaths(const GrPathRange* pathRange,
+                                      const uint32_t indices[], int count,
+                                      const float transforms[], PathTransformType transformsType,
+                                      SkPath::FillType fill, const GrDeviceCoordTexture* dstCopy) {
+    SkASSERT(NULL != pathRange);
+    SkASSERT(NULL != indices);
+    SkASSERT(NULL != transforms);
 
     if (this->needsNewClip()) {
         this->recordClip();
     }
-    if (this->needsNewState()) {
-        this->recordState();
-    }
+    this->recordStateIfNecessary();
     DrawPaths* dp = this->recordDrawPaths();
-    dp->fPathCount = pathCount;
-    dp->fPaths = SkNEW_ARRAY(const GrPath*, pathCount);
-    memcpy(dp->fPaths, paths, sizeof(GrPath*) * pathCount);
-    for (int i = 0; i < pathCount; ++i) {
-        dp->fPaths[i]->ref();
-    }
+    dp->fPathRange.reset(SkRef(pathRange));
+    dp->fIndices = SkNEW_ARRAY(uint32_t, count); // TODO: Accomplish this without a malloc
+    memcpy(dp->fIndices, indices, sizeof(uint32_t) * count);
+    dp->fCount = count;
 
-    dp->fTransforms = SkNEW_ARRAY(SkMatrix, pathCount);
-    memcpy(dp->fTransforms, transforms, sizeof(SkMatrix) * pathCount);
+    const int transformsLength = PathTransformSize(transformsType) * count;
+    dp->fTransforms = SkNEW_ARRAY(float, transformsLength);
+    memcpy(dp->fTransforms, transforms, sizeof(float) * transformsLength);
+    dp->fTransformsType = transformsType;
 
     dp->fFill = fill;
-    dp->fStroke = stroke;
 
     if (NULL != dstCopy) {
         dp->fDstCopy = *dstCopy;
@@ -633,9 +609,13 @@ void GrInOrderDrawBuffer::flush() {
                 SkAssertResult(drawPathsIter.next());
                 const GrDeviceCoordTexture* dstCopy =
                     NULL !=drawPathsIter->fDstCopy.texture() ? &drawPathsIter->fDstCopy : NULL;
-                fDstGpu->executeDrawPaths(drawPathsIter->fPathCount, drawPathsIter->fPaths,
-                                          drawPathsIter->fTransforms, drawPathsIter->fFill,
-                                          drawPathsIter->fStroke, dstCopy);
+                fDstGpu->executeDrawPaths(drawPathsIter->fPathRange.get(),
+                                          drawPathsIter->fIndices,
+                                          drawPathsIter->fCount,
+                                          drawPathsIter->fTransforms,
+                                          drawPathsIter->fTransformsType,
+                                          drawPathsIter->fFill,
+                                          dstCopy);
                 break;
             }
             case kSetState_Cmd:
@@ -921,8 +901,26 @@ void GrInOrderDrawBuffer::geometrySourceWillPop(
     }
 }
 
-bool GrInOrderDrawBuffer::needsNewState() const {
-    return fStates.empty() || fStates.back() != this->getDrawState();
+void GrInOrderDrawBuffer::recordStateIfNecessary() {
+    if (fStates.empty()) {
+        fStates.push_back() = this->getDrawState();
+        this->addToCmdBuffer(kSetState_Cmd);
+        return;
+    }
+    const GrDrawState& curr = this->getDrawState();
+    GrDrawState& prev = fStates.back();
+    switch (GrDrawState::CombineIfPossible(prev, curr)) {
+        case GrDrawState::kIncompatible_CombinedState:
+            fStates.push_back() = this->getDrawState();
+            this->addToCmdBuffer(kSetState_Cmd);
+            break;
+        case GrDrawState::kA_CombinedState:
+        case GrDrawState::kAOrB_CombinedState: // Treat the same as kA.
+            break;
+        case GrDrawState::kB_CombinedState:
+            prev = curr;
+            break;
+    }
 }
 
 bool GrInOrderDrawBuffer::needsNewClip() const {
@@ -953,11 +951,6 @@ void GrInOrderDrawBuffer::recordClip() {
     fClips.back().fOrigin = this->getClip()->fOrigin;
     fClipSet = false;
     this->addToCmdBuffer(kSetClip_Cmd);
-}
-
-void GrInOrderDrawBuffer::recordState() {
-    fStates.push_back() = this->getDrawState();
-    this->addToCmdBuffer(kSetState_Cmd);
 }
 
 GrInOrderDrawBuffer::DrawRecord* GrInOrderDrawBuffer::recordDraw(const DrawInfo& info) {

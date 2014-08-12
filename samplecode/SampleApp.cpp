@@ -8,6 +8,7 @@
 #include "SampleApp.h"
 
 #include "OverView.h"
+#include "Resources.h"
 #include "SampleCode.h"
 #include "SamplePipeControllers.h"
 #include "SkCanvas.h"
@@ -754,7 +755,7 @@ SampleWindow::SampleWindow(void* hwnd, int argc, char** argv, DeviceManager* dev
         SkString filename;
         while (iter.next(&filename)) {
             *fSamples.append() = new PictFileFactory(
-                    SkOSPath::SkPathJoin(FLAGS_pictureDir[0], filename.c_str()));
+                SkOSPath::Join(FLAGS_pictureDir[0], filename.c_str()));
         }
     }
     if (!FLAGS_picture.isEmpty()) {
@@ -768,7 +769,7 @@ SampleWindow::SampleWindow(void* hwnd, int argc, char** argv, DeviceManager* dev
         SkString filename;
         while (iter.next(&filename)) {
             *fSamples.append() = new PdfFileViewerFactory(
-                    SkOSPath::SkPathJoin(FLAGS_pictureDir[0], filename.c_str()));
+                SkOSPath::Join(FLAGS_pictureDir[0], filename.c_str()));
         }
     }
 #endif
@@ -1660,9 +1661,7 @@ static void cleanup_for_filename(SkString* name) {
 }
 #endif
 
-namespace sk_tool_utils {
-    extern bool gEnablePortableTypeface;
-};
+DECLARE_bool(portableFonts);
 
 bool SampleWindow::onHandleChar(SkUnichar uni) {
     {
@@ -1718,7 +1717,7 @@ bool SampleWindow::onHandleChar(SkUnichar uni) {
             toggleFPS();
             break;
         case 'F':
-            sk_tool_utils::gEnablePortableTypeface ^= true;
+            FLAGS_portableFonts ^= true;
             this->inval(NULL);
             break;
         case 'g':
@@ -2385,12 +2384,12 @@ void get_preferred_size(int* x, int* y, int* width, int* height) {
 }
 
 #ifdef SK_BUILD_FOR_IOS
-void save_args(int argc, char *argv[]) {
+IOS_launch_type set_cmd_line_args(int , char *[], const char* resourceDir) {
+    SetResourcePath(resourceDir);
+    return kApplication__iOSLaunchType;
 }
 #endif
 
-// FIXME: this should be in a header
-void application_init();
 void application_init() {
 //    setenv("ANDROID_ROOT", "../../../data", 0);
 #ifdef SK_BUILD_FOR_MAC
@@ -2400,8 +2399,6 @@ void application_init() {
     SkEvent::Init();
 }
 
-// FIXME: this should be in a header
-void application_term();
 void application_term() {
     SkEvent::Term();
     SkGraphics::Term();

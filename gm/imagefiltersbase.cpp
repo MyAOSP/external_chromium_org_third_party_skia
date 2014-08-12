@@ -113,6 +113,7 @@ static void draw_text(SkCanvas* canvas, const SkRect& r, SkImageFilter* imf) {
     paint.setImageFilter(imf);
     paint.setColor(SK_ColorCYAN);
     paint.setAntiAlias(true);
+    sk_tool_utils::set_portable_typeface(&paint);
     paint.setTextSize(r.height()/2);
     paint.setTextAlign(SkPaint::kCenter_Align);
     canvas->drawText("Text", 4, r.centerX(), r.centerY(), paint);
@@ -198,7 +199,7 @@ protected:
             FailImageFilter::Create(),
             SkColorFilterImageFilter::Create(cf),
             SkBlurImageFilter::Create(12.0f, 0.0f),
-            SkDropShadowImageFilter::Create(10.0f, 5.0f, 3.0f, SK_ColorBLUE),
+            SkDropShadowImageFilter::Create(10.0f, 5.0f, 3.0f, 3.0f, SK_ColorBLUE),
         };
         cf->unref();
 

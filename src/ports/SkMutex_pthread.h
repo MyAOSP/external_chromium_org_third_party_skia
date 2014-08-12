@@ -89,9 +89,13 @@ private:
 #define SK_BASE_MUTEX_INIT { PTHREAD_MUTEX_INITIALIZER, SkDEBUGCODE(0) }
 
 // Using POD-style initialization prevents the generation of a static initializer.
-#define SK_DECLARE_STATIC_MUTEX(name) static SkBaseMutex name = SK_BASE_MUTEX_INIT
-
-// Special case used when the static mutex must be available globally.
-#define SK_DECLARE_GLOBAL_MUTEX(name) SkBaseMutex name = SK_BASE_MUTEX_INIT
+//
+// Without magic statics there are no thread safety guarantees on initialization
+// of local statics (even POD). As a result, it is illegal to use
+// SK_DECLARE_STATIC_MUTEX in a function.
+//
+// Because SkBaseMutex is not a primitive, a static SkBaseMutex cannot be
+// initialized in a class with this macro.
+#define SK_DECLARE_STATIC_MUTEX(name) namespace {} static SkBaseMutex name = SK_BASE_MUTEX_INIT
 
 #endif

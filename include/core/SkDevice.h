@@ -242,6 +242,8 @@ protected:
                               const SkColor colors[], SkXfermode* xmode,
                               const uint16_t indices[], int indexCount,
                               const SkPaint& paint) = 0;
+    // default implementation calls drawVertices
+    virtual void drawPatch(const SkDraw&, const SkPatch& patch, const SkPaint& paint);
     /** The SkDevice passed will be an SkDevice which was returned by a call to
         onCreateDevice on this device with kSaveLayer_Usage.
      */
@@ -338,13 +340,6 @@ protected:
 
     /**
      *  PRIVATE / EXPERIMENTAL -- do not call
-     *  Purge all discardable optimization information for 'picture'. If
-     *  picture is NULL then purge discardable information for all pictures.
-     */
-    virtual void EXPERIMENTAL_purge(const SkPicture* picture);
-
-    /**
-     *  PRIVATE / EXPERIMENTAL -- do not call
      *  This entry point gives the backend an opportunity to take over the rendering
      *  of 'picture'. If optimization data is available (due to an earlier
      *  'optimize' call) this entry point should make use of it and return true
@@ -384,6 +379,8 @@ private:
     /** Causes any deferred drawing to the device to be completed.
      */
     virtual void flush() {}
+
+    virtual SkImageFilter::UniqueIDCache* getImageFilterCache() { return NULL; }
 
     SkIPoint    fOrigin;
     SkMetaData* fMetaData;

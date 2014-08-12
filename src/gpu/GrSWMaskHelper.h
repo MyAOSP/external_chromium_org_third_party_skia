@@ -15,6 +15,7 @@
 #include "SkMatrix.h"
 #include "SkRasterClip.h"
 #include "SkRegion.h"
+#include "SkTextureCompressor.h"
 #include "SkTypes.h"
 
 class GrAutoScratchTexture;
@@ -41,7 +42,7 @@ class GrDrawTarget;
 class GrSWMaskHelper : SkNoncopyable {
 public:
     GrSWMaskHelper(GrContext* context)
-    : fContext(context) {
+    : fContext(context), fCompressMask(false) {
     }
 
     // set up the internal state in preparation for draws. Since many masks
@@ -100,6 +101,14 @@ private:
     SkBitmap        fBM;
     SkDraw          fDraw;
     SkRasterClip    fRasterClip;
+
+    // This flag says whether or not we should compress the mask. If
+    // it is true, then fCompressedFormat is always valid.
+    bool                        fCompressMask;
+
+    // This is the desired format within which to compress the
+    // texture. This value is only valid if fCompressMask is true.
+    SkTextureCompressor::Format fCompressedFormat;
 
     // Actually sends the texture data to the GPU. This is called from
     // toTexture with the data filled in depending on the texture config.

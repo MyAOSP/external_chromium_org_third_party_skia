@@ -14,6 +14,7 @@
 #include "SkClipStack.h"
 #include "SkPaint.h"
 #include "SkRefCnt.h"
+#include "SkPatch.h"
 #include "SkPath.h"
 #include "SkRegion.h"
 #include "SkXfermode.h"
@@ -964,12 +965,6 @@ public:
     */
     void EXPERIMENTAL_optimize(const SkPicture* picture);
 
-    /** PRIVATE / EXPERIMENTAL -- do not call
-        Purge all the discardable optimization information associated with
-        'picture'. If NULL is passed in, purge all discardable information.
-    */
-    void EXPERIMENTAL_purge(const SkPicture* picture);
-
     /** Draw the picture into this canvas. This method effective brackets the
         playback of the picture's draw calls with save/restore, so the state
         of this canvas will be unchanged after this call.
@@ -1012,6 +1007,8 @@ public:
                               const SkColor colors[], SkXfermode* xmode,
                               const uint16_t indices[], int indexCount,
                               const SkPaint& paint);
+    
+    virtual void drawPatch(const SkPatch& patch, const SkPaint& paint);
 
     /** Send a blob of data to the canvas.
         For canvases that draw, this call is effectively a no-op, as the data

@@ -1134,13 +1134,8 @@ void SkCanvas::internalDrawDevice(SkBaseDevice* srcDev, int x, int y,
             SkMatrix matrix = *iter.fMatrix;
             matrix.postTranslate(SkIntToScalar(-pos.x()), SkIntToScalar(-pos.y()));
             SkIRect clipBounds = SkIRect::MakeWH(srcDev->width(), srcDev->height());
-            SkImageFilter::Cache* cache = SkImageFilter::GetExternalCache();
-            SkAutoUnref aur(NULL);
-            if (!cache) {
-                cache = SkImageFilter::Cache::Create();
-                aur.reset(cache);
-            }
-            SkImageFilter::Context ctx(matrix, clipBounds, cache);
+            SkAutoTUnref<SkImageFilter::UniqueIDCache> cache(dstDev->getImageFilterCache());
+            SkImageFilter::Context ctx(matrix, clipBounds, cache.get());
             if (filter->filterImage(&proxy, src, ctx, &dst, &offset)) {
                 SkPaint tmpUnfiltered(*paint);
                 tmpUnfiltered.setImageFilter(NULL);
@@ -1179,13 +1174,8 @@ void SkCanvas::drawSprite(const SkBitmap& bitmap, int x, int y,
             SkMatrix matrix = *iter.fMatrix;
             matrix.postTranslate(SkIntToScalar(-pos.x()), SkIntToScalar(-pos.y()));
             SkIRect clipBounds = SkIRect::MakeWH(bitmap.width(), bitmap.height());
-            SkImageFilter::Cache* cache = SkImageFilter::GetExternalCache();
-            SkAutoUnref aur(NULL);
-            if (!cache) {
-                cache = SkImageFilter::Cache::Create();
-                aur.reset(cache);
-            }
-            SkImageFilter::Context ctx(matrix, clipBounds, cache);
+            SkAutoTUnref<SkImageFilter::UniqueIDCache> cache(iter.fDevice->getImageFilterCache());
+            SkImageFilter::Context ctx(matrix, clipBounds, cache.get());
             if (filter->filterImage(&proxy, bitmap, ctx, &dst, &offset)) {
                 SkPaint tmpUnfiltered(*paint);
                 tmpUnfiltered.setImageFilter(NULL);
@@ -2263,6 +2253,25 @@ void SkCanvas::drawVertices(VertexMode vmode, int vertexCount,
     LOOPER_END
 }
 
+void SkCanvas::drawPatch(const SkPatch& patch, const SkPaint& paint) {
+    
+    // Since a patch is always within the convex hull of the control points, we discard it when its
+    // bounding rectangle is completely outside the current clip.
+    SkRect bounds;
+    bounds.set(patch.getControlPoints(), 12);
+    if (this->quickReject(bounds)) {
+        return;
+    }
+    
+    LOOPER_BEGIN(paint, SkDrawFilter::kPath_Type, NULL)
+    
+    while (iter.next()) {
+        iter.fDevice->drawPatch(iter, patch, paint);
+    }
+    
+    LOOPER_END
+}
+
 //////////////////////////////////////////////////////////////////////////////
 // These methods are NOT virtual, and therefore must call back into virtual
 // methods, rather than actually drawing themselves.
@@ -2383,13 +2392,6 @@ void SkCanvas::EXPERIMENTAL_optimize(const SkPicture* picture) {
     SkBaseDevice* device = this->getDevice();
     if (NULL != device) {
         device->EXPERIMENTAL_optimize(picture);
-    }
-}
-
-void SkCanvas::EXPERIMENTAL_purge(const SkPicture* picture) {
-    SkBaseDevice* device = this->getTopDevice();
-    if (NULL != device) {
-        device->EXPERIMENTAL_purge(picture);
     }
 }
 

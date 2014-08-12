@@ -102,20 +102,20 @@ public:
 
     virtual void emitCode(GrGLShaderBuilder* builder,
                           const GrDrawEffect& drawEffect,
-                          EffectKey key,
+                          const GrEffectKey& key,
                           const char* outputColor,
                           const char* inputColor,
                           const TransformedCoordsArray&,
                           const TextureSamplerArray&) SK_OVERRIDE;
 
-    static inline EffectKey GenKey(const GrDrawEffect&, const GrGLCaps&);
+    static inline void GenKey(const GrDrawEffect&, const GrGLCaps&, GrEffectKeyBuilder*);
 
-    virtual void setData(const GrGLUniformManager&, const GrDrawEffect&) SK_OVERRIDE;
+    virtual void setData(const GrGLProgramDataManager&, const GrDrawEffect&) SK_OVERRIDE;
 
 private:
-    GrGLUniformManager::UniformHandle   fCircleUniform;
-    SkPoint                             fPrevCenter;
-    SkScalar                            fPrevRadius;
+    GrGLProgramDataManager::UniformHandle fCircleUniform;
+    SkPoint                               fPrevCenter;
+    SkScalar                              fPrevRadius;
 
     typedef GrGLEffect INHERITED;
 };
@@ -128,7 +128,7 @@ GLCircleEffect::GLCircleEffect(const GrBackendEffectFactory& factory,
 
 void GLCircleEffect::emitCode(GrGLShaderBuilder* builder,
                               const GrDrawEffect& drawEffect,
-                              EffectKey key,
+                              const GrEffectKey& key,
                               const char* outputColor,
                               const char* inputColor,
                               const TransformedCoordsArray&,
@@ -161,13 +161,13 @@ void GLCircleEffect::emitCode(GrGLShaderBuilder* builder,
                            (GrGLSLExpr4(inputColor) * GrGLSLExpr1("d")).c_str());
 }
 
-GrGLEffect::EffectKey GLCircleEffect::GenKey(const GrDrawEffect& drawEffect,
-                                             const GrGLCaps&) {
+void GLCircleEffect::GenKey(const GrDrawEffect& drawEffect, const GrGLCaps&,
+                            GrEffectKeyBuilder* b) {
     const CircleEffect& ce = drawEffect.castEffect<CircleEffect>();
-    return ce.getEdgeType();
+    b->add32(ce.getEdgeType());
 }
 
-void GLCircleEffect::setData(const GrGLUniformManager& uman, const GrDrawEffect& drawEffect) {
+void GLCircleEffect::setData(const GrGLProgramDataManager& pdman, const GrDrawEffect& drawEffect) {
     const CircleEffect& ce = drawEffect.castEffect<CircleEffect>();
     if (ce.getRadius() != fPrevRadius || ce.getCenter() != fPrevCenter) {
         SkScalar radius = ce.getRadius();
@@ -176,7 +176,7 @@ void GLCircleEffect::setData(const GrGLUniformManager& uman, const GrDrawEffect&
         } else {
             radius += 0.5f;
         }
-        uman.set3f(fCircleUniform, ce.getCenter().fX, ce.getCenter().fY, radius);
+        pdman.set3f(fCircleUniform, ce.getCenter().fX, ce.getCenter().fY, radius);
         fPrevCenter = ce.getCenter();
         fPrevRadius = ce.getRadius();
     }
@@ -274,20 +274,20 @@ public:
 
     virtual void emitCode(GrGLShaderBuilder* builder,
                           const GrDrawEffect& drawEffect,
-                          EffectKey key,
+                          const GrEffectKey& key,
                           const char* outputColor,
                           const char* inputColor,
                           const TransformedCoordsArray&,
                           const TextureSamplerArray&) SK_OVERRIDE;
 
-    static inline EffectKey GenKey(const GrDrawEffect&, const GrGLCaps&);
+    static inline void GenKey(const GrDrawEffect&, const GrGLCaps&, GrEffectKeyBuilder*);
 
-    virtual void setData(const GrGLUniformManager&, const GrDrawEffect&) SK_OVERRIDE;
+    virtual void setData(const GrGLProgramDataManager&, const GrDrawEffect&) SK_OVERRIDE;
 
 private:
-    GrGLUniformManager::UniformHandle   fEllipseUniform;
-    SkPoint                             fPrevCenter;
-    SkVector                            fPrevRadii;
+    GrGLProgramDataManager::UniformHandle fEllipseUniform;
+    SkPoint                               fPrevCenter;
+    SkVector                              fPrevRadii;
 
     typedef GrGLEffect INHERITED;
 };
@@ -300,7 +300,7 @@ GLEllipseEffect::GLEllipseEffect(const GrBackendEffectFactory& factory,
 
 void GLEllipseEffect::emitCode(GrGLShaderBuilder* builder,
                                const GrDrawEffect& drawEffect,
-                               EffectKey key,
+                               const GrEffectKey& key,
                                const char* outputColor,
                                const char* inputColor,
                                const TransformedCoordsArray&,
@@ -346,18 +346,18 @@ void GLEllipseEffect::emitCode(GrGLShaderBuilder* builder,
                            (GrGLSLExpr4(inputColor) * GrGLSLExpr1("alpha")).c_str());
 }
 
-GrGLEffect::EffectKey GLEllipseEffect::GenKey(const GrDrawEffect& drawEffect,
-                                              const GrGLCaps&) {
+void GLEllipseEffect::GenKey(const GrDrawEffect& drawEffect, const GrGLCaps&,
+                             GrEffectKeyBuilder* b) {
     const EllipseEffect& ee = drawEffect.castEffect<EllipseEffect>();
-    return ee.getEdgeType();
+    b->add32(ee.getEdgeType());
 }
 
-void GLEllipseEffect::setData(const GrGLUniformManager& uman, const GrDrawEffect& drawEffect) {
+void GLEllipseEffect::setData(const GrGLProgramDataManager& pdman, const GrDrawEffect& drawEffect) {
     const EllipseEffect& ee = drawEffect.castEffect<EllipseEffect>();
     if (ee.getRadii() != fPrevRadii || ee.getCenter() != fPrevCenter) {
         SkScalar invRXSqd = 1.f / (ee.getRadii().fX * ee.getRadii().fX);
         SkScalar invRYSqd = 1.f / (ee.getRadii().fY * ee.getRadii().fY);
-        uman.set4f(fEllipseUniform, ee.getCenter().fX, ee.getCenter().fY, invRXSqd, invRYSqd);
+        pdman.set4f(fEllipseUniform, ee.getCenter().fX, ee.getCenter().fY, invRXSqd, invRYSqd);
         fPrevCenter = ee.getCenter();
         fPrevRadii = ee.getRadii();
     }

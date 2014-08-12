@@ -18,12 +18,27 @@
   ],
   'dependencies': [
     'experimental.gyp:experimental',
-    'flags.gyp:flags',
+    'flags.gyp:flags_common',
     'pdf.gyp:pdf',
     'skia_lib.gyp:skia_lib',
     'tools.gyp:picture_utils',
     'tools.gyp:resources',
     'tools.gyp:sk_tool_utils',
+  ],
+  'conditions': [
+    [ 'skia_os == "android"', {
+      'include_dirs': [
+        '../src/ports',
+      ],
+      'sources': [
+        '../tests/FontConfigParser.cpp',
+      ],
+    }],
+    [ 'skia_android_framework == 1', {
+      'libraries': [
+        '-ldl',
+      ],
+    }],
   ],
   'sources': [
     '../tests/Test.cpp',
@@ -46,6 +61,7 @@
     '../tests/BlitRowTest.cpp',
     '../tests/BlurTest.cpp',
     '../tests/CachedDecodingPixelRefTest.cpp',
+    '../tests/CanvasStateHelpers.cpp',
     '../tests/CanvasStateTest.cpp',
     '../tests/CanvasTest.cpp',
     '../tests/ChecksumTest.cpp',
@@ -99,10 +115,10 @@
     '../tests/GrSurfaceTest.cpp',
     '../tests/GrTBSearchTest.cpp',
     '../tests/GradientTest.cpp',
-    '../tests/HashCacheTest.cpp',
     '../tests/ImageCacheTest.cpp',
     '../tests/ImageDecodingTest.cpp',
     '../tests/ImageFilterTest.cpp',
+    '../tests/ImageGeneratorTest.cpp',
     '../tests/ImageNewShaderTest.cpp',
     '../tests/InfRectTest.cpp',
     '../tests/InterpolatorTest.cpp',

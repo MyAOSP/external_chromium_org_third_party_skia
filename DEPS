@@ -3,7 +3,7 @@ use_relative_paths = True
 # Dependencies on outside packages.
 #
 deps = {
-  "common": "https://skia.googlesource.com/common.git@ac762a93094a8a45e2793820ababd280766eef2a",
+  "common": "https://skia.googlesource.com/common.git@f63e1cfff23615157e28942af5f5e8298351cb10",
 
   # DEPS using https://chromium.googlesource.com are pulled from chromium @ r205199
   # (see https://chromium.googlesource.com/chromium/chromium/+/c59bfa8ef877f45bfa859669053859857af1d279)
@@ -29,7 +29,7 @@ deps_os = {
     "platform_tools/android/third_party/externals/gif" : "https://android.googlesource.com/platform/external/giflib.git@android-4.2.2_r1.2",
     "platform_tools/android/third_party/externals/png" : "https://android.googlesource.com/platform/external/libpng.git@android-4.2.2_r1.2",
     "platform_tools/android/third_party/externals/jpeg" :
-      "https://android.googlesource.com/platform/external/jpeg.git@746f1f0853ddbd14ab5da6af35cc1fa560453d1e",
+      "https://android.googlesource.com/platform/external/jpeg.git@ef1b83013e7814622a9d11579878d342e84580b7",
   },
   "chromeos": {
     "platform_tools/chromeos/third_party/externals/gif" : "https://android.googlesource.com/platform/external/giflib.git@android-4.2.2_r1.2",

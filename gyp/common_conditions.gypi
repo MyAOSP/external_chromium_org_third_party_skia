@@ -8,6 +8,24 @@
     'SK_FORCE_DISTANCEFIELD_FONTS=<(skia_force_distancefield_fonts)',
   ],
   'conditions' : [
+    ['skia_pic', {
+     'cflags': [
+       '-fPIC',
+     ],
+     'conditions' : [
+      # FIXME: The reason we don't do this on Android is due to the way
+      # we build the executables/skia_launcher on Android. See
+      # https://codereview.chromium.org/406613003/diff/1/gyp/common_conditions.gypi#newcode455
+      ['skia_os != "android"', {
+       'target_conditions': [
+         [ '_type == "executable"', {
+           'cflags': [ '-fPIE' ],
+           'ldflags': [ '-pie' ],
+         }],
+       ],
+      }],
+     ],
+    }],
     [ 'skia_arch_type == "arm64"', {
       'cflags': [
         '-ffp-contract=off',
@@ -255,7 +273,7 @@
             'conditions': [
               [ 'arm_neon == 1', {
                 'defines': [
-                  '__ARM_HAVE_NEON',
+                  'SK_ARM_HAS_NEON',
                 ],
                 'cflags': [
                   '-mfpu=neon',
@@ -263,7 +281,7 @@
               }],
               [ 'arm_neon_optional == 1', {
                 'defines': [
-                  '__ARM_HAVE_OPTIONAL_NEON_SUPPORT',
+                  'SK_ARM_HAS_OPTIONAL_NEON',
                 ],
               }],
               [ 'skia_os != "chromeos"', {
@@ -394,9 +412,6 @@
         },
         'conditions' : [
           [ 'skia_shared_lib', {
-            'cflags': [
-              '-fPIC',
-            ],
             'defines': [
               'SKIA_DLL',
               'SKIA_IMPLEMENTATION=1',
@@ -421,13 +436,6 @@
                 '-L<(nacl_sdk_root)/ports/lib/newlib_x86_<(skia_arch_width)/Release',
               ],
             },
-          }, { # skia_os != "nacl"
-            'link_settings': {
-              'ldflags': [
-                '-lstdc++',
-                '-lm',
-              ],
-            },
           }],
           # Enable asan, tsan, etc.
           [ 'skia_sanitizer', {
@@ -440,23 +448,9 @@
             'conditions' : [
               [ 'skia_sanitizer == "thread"', {
                 'defines': [ 'SK_DYNAMIC_ANNOTATIONS_ENABLED=1' ],
-                'cflags': [ '-fPIC' ],
-                'target_conditions': [
-                  [ '_type == "executable"', {
-                    'cflags': [ '-fPIE' ],
-                    'ldflags': [ '-pie' ],
-                  }],
-                ],
               }],
               [ 'skia_sanitizer == "undefined"', {
-                'cflags': [ '-fPIC' ],
                 'cflags_cc!': ['-fno-rtti'],
-                'target_conditions': [
-                  [ '_type == "executable"', {
-                    'cflags': [ '-fPIE' ],
-                    'ldflags': [ '-pie' ],
-                  }],
-                ],
               }],
             ],
           }],
@@ -637,27 +631,23 @@
           },
         },
         'libraries': [
-          '-lstdc++',
-          '-lm',
           '-llog',
         ],
         'cflags': [
           '-fuse-ld=gold',
         ],
         'conditions': [
-          [ 'skia_android_framework', {
-            'libraries!': [
-              '-lstdc++',
-              '-lm',
+          [ 'skia_arch_type == "x86"', {
+            'cflags': [
+              '-mssse3',
             ],
+          }],
+          [ 'skia_android_framework', {
             'cflags!': [
               '-fuse-ld=gold',
             ],
           }],
           [ 'skia_shared_lib', {
-            'cflags': [
-              '-fPIC',
-            ],
             'defines': [
               'SKIA_DLL',
               'SKIA_IMPLEMENTATION=1',
@@ -686,7 +676,7 @@
       ],
     }],
 
-    [ 'skia_crash_handler', {
+    [ 'skia_is_bot', {
       'defines': [ 'SK_CRASH_HANDLER' ],
     }],
 

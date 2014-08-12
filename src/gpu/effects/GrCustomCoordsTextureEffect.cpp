@@ -21,7 +21,7 @@ public:
 
     virtual void emitCode(GrGLFullShaderBuilder* builder,
                           const GrDrawEffect& drawEffect,
-                          EffectKey key,
+                          const GrEffectKey& key,
                           const char* outputColor,
                           const char* inputColor,
                           const TransformedCoordsArray&,
@@ -46,7 +46,7 @@ public:
         builder->fsCodeAppend(";\n");
     }
 
-    virtual void setData(const GrGLUniformManager& uman,
+    virtual void setData(const GrGLProgramDataManager& pdman,
                          const GrDrawEffect& drawEffect) SK_OVERRIDE {}
 
 private:

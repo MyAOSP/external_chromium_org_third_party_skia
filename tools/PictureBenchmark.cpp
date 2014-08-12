@@ -74,18 +74,12 @@ void PictureBenchmark::run(SkPicture* pict) {
 
     if (fPreprocess) {
         if (NULL != fRenderer->getCanvas()) {
-            fRenderer->getCanvas()->EXPERIMENTAL_optimize(pict);
+            fRenderer->getCanvas()->EXPERIMENTAL_optimize(fRenderer->getPicture());
         }
     }
 
     fRenderer->render(NULL);
     fRenderer->resetState(true);   // flush, swapBuffers and Finish
-
-    if (fPreprocess) {
-        if (NULL != fRenderer->getCanvas()) {
-            fRenderer->getCanvas()->EXPERIMENTAL_purge(pict);
-        }
-    }
 
     if (fPurgeDecodedTex) {
         fRenderer->purgeTextures();
@@ -219,12 +213,6 @@ void PictureBenchmark::run(SkPicture* pict) {
                 perRunTimer->end();
 
                 SkAssertResult(perRunTimerData.appendTimes(perRunTimer.get()));
-
-                if (fPreprocess) {
-                    if (NULL != fRenderer->getCanvas()) {
-                        fRenderer->getCanvas()->EXPERIMENTAL_purge(pict);
-                    }
-                }
 
                 if (fPurgeDecodedTex) {
                     fRenderer->purgeTextures();

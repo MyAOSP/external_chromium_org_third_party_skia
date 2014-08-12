@@ -46,7 +46,7 @@ public:
 
         virtual void emitCode(GrGLFullShaderBuilder* builder,
                               const GrDrawEffect& drawEffect,
-                              EffectKey key,
+                              const GrEffectKey& key,
                               const char* outputColor,
                               const char* inputColor,
                               const TransformedCoordsArray&,
@@ -88,11 +88,9 @@ public:
                                    (GrGLSLExpr4(inputColor) * GrGLSLExpr1("coverage")).c_str());
         }
 
-        static inline EffectKey GenKey(const GrDrawEffect& drawEffect, const GrGLCaps&) {
-            return 0;
-        }
+        static void GenKey(const GrDrawEffect&, const GrGLCaps&, GrEffectKeyBuilder*) {}
 
-        virtual void setData(const GrGLUniformManager& uman, const GrDrawEffect&) SK_OVERRIDE {}
+        virtual void setData(const GrGLProgramDataManager& pdman, const GrDrawEffect&) SK_OVERRIDE {}
 
     private:
         typedef GrGLVertexEffect INHERITED;
@@ -164,7 +162,7 @@ public:
 
         virtual void emitCode(GrGLFullShaderBuilder* builder,
                               const GrDrawEffect& drawEffect,
-                              EffectKey key,
+                              const GrEffectKey& key,
                               const char* outputColor,
                               const char* inputColor,
                               const TransformedCoordsArray&,
@@ -221,11 +219,9 @@ public:
                                    (GrGLSLExpr4(inputColor) * GrGLSLExpr1("coverage")).c_str());
         }
 
-        static inline EffectKey GenKey(const GrDrawEffect& drawEffect, const GrGLCaps&) {
-            return 0;
-        }
+        static void GenKey(const GrDrawEffect&, const GrGLCaps&, GrEffectKeyBuilder*) {}
 
-        virtual void setData(const GrGLUniformManager& uman, const GrDrawEffect&) SK_OVERRIDE {}
+        virtual void setData(const GrGLProgramDataManager& pdman, const GrDrawEffect&) SK_OVERRIDE {}
 
     private:
         typedef GrGLVertexEffect INHERITED;
@@ -763,8 +759,10 @@ void GrAARectRenderer::strokeAARect(GrGpu* gpu,
     devOutside.outset(rx, ry);
 
     bool miterStroke = true;
+    // For hairlines, make bevel and round joins appear the same as mitered ones.
     // small miter limit means right angles show bevel...
-    if (stroke.getJoin() != SkPaint::kMiter_Join || stroke.getMiter() < SK_ScalarSqrt2) {
+    if ((width > 0) && (stroke.getJoin() != SkPaint::kMiter_Join ||
+                        stroke.getMiter() < SK_ScalarSqrt2)) {
         miterStroke = false;
     }
 

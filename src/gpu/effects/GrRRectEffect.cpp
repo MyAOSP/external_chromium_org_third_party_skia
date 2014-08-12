@@ -136,20 +136,20 @@ public:
 
     virtual void emitCode(GrGLShaderBuilder* builder,
                           const GrDrawEffect& drawEffect,
-                          EffectKey key,
+                          const GrEffectKey& key,
                           const char* outputColor,
                           const char* inputColor,
                           const TransformedCoordsArray&,
                           const TextureSamplerArray&) SK_OVERRIDE;
 
-    static inline EffectKey GenKey(const GrDrawEffect&, const GrGLCaps&);
+    static inline void GenKey(const GrDrawEffect&, const GrGLCaps&, GrEffectKeyBuilder*);
 
-    virtual void setData(const GrGLUniformManager&, const GrDrawEffect&) SK_OVERRIDE;
+    virtual void setData(const GrGLProgramDataManager&, const GrDrawEffect&) SK_OVERRIDE;
 
 private:
-    GrGLUniformManager::UniformHandle   fInnerRectUniform;
-    GrGLUniformManager::UniformHandle   fRadiusPlusHalfUniform;
-    SkRRect                             fPrevRRect;
+    GrGLProgramDataManager::UniformHandle fInnerRectUniform;
+    GrGLProgramDataManager::UniformHandle fRadiusPlusHalfUniform;
+    SkRRect                               fPrevRRect;
     typedef GrGLEffect INHERITED;
 };
 
@@ -161,7 +161,7 @@ GLCircularRRectEffect::GLCircularRRectEffect(const GrBackendEffectFactory& facto
 
 void GLCircularRRectEffect::emitCode(GrGLShaderBuilder* builder,
                              const GrDrawEffect& drawEffect,
-                             EffectKey key,
+                             const GrEffectKey& key,
                              const char* outputColor,
                              const char* inputColor,
                              const TransformedCoordsArray&,
@@ -291,14 +291,14 @@ void GLCircularRRectEffect::emitCode(GrGLShaderBuilder* builder,
                            (GrGLSLExpr4(inputColor) * GrGLSLExpr1("alpha")).c_str());
 }
 
-GrGLEffect::EffectKey GLCircularRRectEffect::GenKey(const GrDrawEffect& drawEffect,
-                                                    const GrGLCaps&) {
+void GLCircularRRectEffect::GenKey(const GrDrawEffect& drawEffect, const GrGLCaps&,
+                                   GrEffectKeyBuilder* b) {
     const CircularRRectEffect& crre = drawEffect.castEffect<CircularRRectEffect>();
     GR_STATIC_ASSERT(kGrEffectEdgeTypeCnt <= 8);
-    return (crre.getCircularCornerFlags() << 3) | crre.getEdgeType();
+    b->add32((crre.getCircularCornerFlags() << 3) | crre.getEdgeType());
 }
 
-void GLCircularRRectEffect::setData(const GrGLUniformManager& uman,
+void GLCircularRRectEffect::setData(const GrGLProgramDataManager& pdman,
                                     const GrDrawEffect& drawEffect) {
     const CircularRRectEffect& crre = drawEffect.castEffect<CircularRRectEffect>();
     const SkRRect& rrect = crre.getRRect();
@@ -371,8 +371,8 @@ void GLCircularRRectEffect::setData(const GrGLUniformManager& uman,
             default:
                 SkFAIL("Should have been one of the above cases.");
         }
-        uman.set4f(fInnerRectUniform, rect.fLeft, rect.fTop, rect.fRight, rect.fBottom);
-        uman.set1f(fRadiusPlusHalfUniform, radius + 0.5f);
+        pdman.set4f(fInnerRectUniform, rect.fLeft, rect.fTop, rect.fRight, rect.fBottom);
+        pdman.set1f(fRadiusPlusHalfUniform, radius + 0.5f);
         fPrevRRect = rrect;
     }
 }
@@ -488,20 +488,20 @@ public:
 
     virtual void emitCode(GrGLShaderBuilder* builder,
                           const GrDrawEffect& drawEffect,
-                          EffectKey key,
+                          const GrEffectKey& key,
                           const char* outputColor,
                           const char* inputColor,
                           const TransformedCoordsArray&,
                           const TextureSamplerArray&) SK_OVERRIDE;
 
-    static inline EffectKey GenKey(const GrDrawEffect&, const GrGLCaps&);
+    static inline void GenKey(const GrDrawEffect&, const GrGLCaps&, GrEffectKeyBuilder*);
 
-    virtual void setData(const GrGLUniformManager&, const GrDrawEffect&) SK_OVERRIDE;
+    virtual void setData(const GrGLProgramDataManager&, const GrDrawEffect&) SK_OVERRIDE;
 
 private:
-    GrGLUniformManager::UniformHandle   fInnerRectUniform;
-    GrGLUniformManager::UniformHandle   fInvRadiiSqdUniform;
-    SkRRect                             fPrevRRect;
+    GrGLProgramDataManager::UniformHandle fInnerRectUniform;
+    GrGLProgramDataManager::UniformHandle fInvRadiiSqdUniform;
+    SkRRect                               fPrevRRect;
     typedef GrGLEffect INHERITED;
 };
 
@@ -513,7 +513,7 @@ GLEllipticalRRectEffect::GLEllipticalRRectEffect(const GrBackendEffectFactory& f
 
 void GLEllipticalRRectEffect::emitCode(GrGLShaderBuilder* builder,
                                        const GrDrawEffect& drawEffect,
-                                       EffectKey key,
+                                       const GrEffectKey& key,
                                        const char* outputColor,
                                        const char* inputColor,
                                        const TransformedCoordsArray&,
@@ -586,14 +586,14 @@ void GLEllipticalRRectEffect::emitCode(GrGLShaderBuilder* builder,
                            (GrGLSLExpr4(inputColor) * GrGLSLExpr1("alpha")).c_str());
 }
 
-GrGLEffect::EffectKey GLEllipticalRRectEffect::GenKey(const GrDrawEffect& drawEffect,
-                                                      const GrGLCaps&) {
+void GLEllipticalRRectEffect::GenKey(const GrDrawEffect& drawEffect, const GrGLCaps&,
+                                     GrEffectKeyBuilder* b) {
     const EllipticalRRectEffect& erre = drawEffect.castEffect<EllipticalRRectEffect>();
     GR_STATIC_ASSERT(kLast_GrEffectEdgeType < (1 << 3));
-    return erre.getRRect().getType() | erre.getEdgeType() << 3;
+    b->add32(erre.getRRect().getType() | erre.getEdgeType() << 3);
 }
 
-void GLEllipticalRRectEffect::setData(const GrGLUniformManager& uman,
+void GLEllipticalRRectEffect::setData(const GrGLProgramDataManager& pdman,
                                       const GrDrawEffect& drawEffect) {
     const EllipticalRRectEffect& erre = drawEffect.castEffect<EllipticalRRectEffect>();
     const SkRRect& rrect = erre.getRRect();
@@ -605,7 +605,7 @@ void GLEllipticalRRectEffect::setData(const GrGLUniformManager& uman,
         switch (erre.getRRect().getType()) {
             case SkRRect::kSimple_Type:
                 rect.inset(r0.fX, r0.fY);
-                uman.set2f(fInvRadiiSqdUniform, 1.f / (r0.fX * r0.fX),
+                pdman.set2f(fInvRadiiSqdUniform, 1.f / (r0.fX * r0.fX),
                                                 1.f / (r0.fY * r0.fY));
                 break;
             case SkRRect::kNinePatch_Type: {
@@ -616,7 +616,7 @@ void GLEllipticalRRectEffect::setData(const GrGLUniformManager& uman,
                 rect.fTop += r0.fY;
                 rect.fRight -= r1.fX;
                 rect.fBottom -= r1.fY;
-                uman.set4f(fInvRadiiSqdUniform, 1.f / (r0.fX * r0.fX),
+                pdman.set4f(fInvRadiiSqdUniform, 1.f / (r0.fX * r0.fX),
                                                 1.f / (r0.fY * r0.fY),
                                                 1.f / (r1.fX * r1.fX),
                                                 1.f / (r1.fY * r1.fY));
@@ -625,7 +625,7 @@ void GLEllipticalRRectEffect::setData(const GrGLUniformManager& uman,
         default:
             SkFAIL("RRect should always be simple or nine-patch.");
         }
-        uman.set4f(fInnerRectUniform, rect.fLeft, rect.fTop, rect.fRight, rect.fBottom);
+        pdman.set4f(fInnerRectUniform, rect.fLeft, rect.fTop, rect.fRight, rect.fBottom);
         fPrevRRect = rrect;
     }
 }

@@ -91,19 +91,19 @@ public:
 
     virtual void emitCode(GrGLShaderBuilder* builder,
                           const GrDrawEffect& drawEffect,
-                          EffectKey key,
+                          const GrEffectKey& key,
                           const char* outputColor,
                           const char* inputColor,
                           const TransformedCoordsArray&,
                           const TextureSamplerArray&) SK_OVERRIDE;
 
-    static inline EffectKey GenKey(const GrDrawEffect&, const GrGLCaps&);
+    static inline void GenKey(const GrDrawEffect&, const GrGLCaps&, GrEffectKeyBuilder*);
 
-    virtual void setData(const GrGLUniformManager&, const GrDrawEffect&) SK_OVERRIDE;
+    virtual void setData(const GrGLProgramDataManager&, const GrDrawEffect&) SK_OVERRIDE;
 
 private:
-    GrGLUniformManager::UniformHandle   fRectUniform;
-    SkRect                              fPrevRect;
+    GrGLProgramDataManager::UniformHandle fRectUniform;
+    SkRect                                fPrevRect;
     typedef GrGLEffect INHERITED;
 };
 
@@ -115,7 +115,7 @@ GLAARectEffect::GLAARectEffect(const GrBackendEffectFactory& factory,
 
 void GLAARectEffect::emitCode(GrGLShaderBuilder* builder,
                               const GrDrawEffect& drawEffect,
-                              EffectKey key,
+                              const GrEffectKey& key,
                               const char* outputColor,
                               const char* inputColor,
                               const TransformedCoordsArray&,
@@ -155,19 +155,20 @@ void GLAARectEffect::emitCode(GrGLShaderBuilder* builder,
                            (GrGLSLExpr4(inputColor) * GrGLSLExpr1("alpha")).c_str());
 }
 
-void GLAARectEffect::setData(const GrGLUniformManager& uman, const GrDrawEffect& drawEffect) {
+void GLAARectEffect::setData(const GrGLProgramDataManager& pdman, const GrDrawEffect& drawEffect) {
     const AARectEffect& aare = drawEffect.castEffect<AARectEffect>();
     const SkRect& rect = aare.getRect();
     if (rect != fPrevRect) {
-        uman.set4f(fRectUniform, rect.fLeft + 0.5f, rect.fTop + 0.5f,
+        pdman.set4f(fRectUniform, rect.fLeft + 0.5f, rect.fTop + 0.5f,
                    rect.fRight - 0.5f, rect.fBottom - 0.5f);
         fPrevRect = rect;
     }
 }
 
-GrGLEffect::EffectKey GLAARectEffect::GenKey(const GrDrawEffect& drawEffect, const GrGLCaps&) {
+void GLAARectEffect::GenKey(const GrDrawEffect& drawEffect, const GrGLCaps&,
+                            GrEffectKeyBuilder* b) {
     const AARectEffect& aare = drawEffect.castEffect<AARectEffect>();
-    return aare.getEdgeType();
+    b->add32(aare.getEdgeType());
 }
 
 const GrBackendEffectFactory& AARectEffect::getFactory() const {
@@ -182,19 +183,19 @@ public:
 
     virtual void emitCode(GrGLShaderBuilder* builder,
                           const GrDrawEffect& drawEffect,
-                          EffectKey key,
+                          const GrEffectKey& key,
                           const char* outputColor,
                           const char* inputColor,
                           const TransformedCoordsArray&,
                           const TextureSamplerArray&) SK_OVERRIDE;
 
-    static inline EffectKey GenKey(const GrDrawEffect&, const GrGLCaps&);
+    static inline void GenKey(const GrDrawEffect&, const GrGLCaps&, GrEffectKeyBuilder*);
 
-    virtual void setData(const GrGLUniformManager&, const GrDrawEffect&) SK_OVERRIDE;
+    virtual void setData(const GrGLProgramDataManager&, const GrDrawEffect&) SK_OVERRIDE;
 
 private:
-    GrGLUniformManager::UniformHandle   fEdgeUniform;
-    SkScalar                            fPrevEdges[3 * GrConvexPolyEffect::kMaxEdges];
+    GrGLProgramDataManager::UniformHandle fEdgeUniform;
+    SkScalar                              fPrevEdges[3 * GrConvexPolyEffect::kMaxEdges];
     typedef GrGLEffect INHERITED;
 };
 
@@ -206,7 +207,7 @@ GrGLConvexPolyEffect::GrGLConvexPolyEffect(const GrBackendEffectFactory& factory
 
 void GrGLConvexPolyEffect::emitCode(GrGLShaderBuilder* builder,
                                     const GrDrawEffect& drawEffect,
-                                    EffectKey key,
+                                    const GrEffectKey& key,
                                     const char* outputColor,
                                     const char* inputColor,
                                     const TransformedCoordsArray&,
@@ -245,20 +246,21 @@ void GrGLConvexPolyEffect::emitCode(GrGLShaderBuilder* builder,
                            (GrGLSLExpr4(inputColor) * GrGLSLExpr1("alpha")).c_str());
 }
 
-void GrGLConvexPolyEffect::setData(const GrGLUniformManager& uman, const GrDrawEffect& drawEffect) {
+void GrGLConvexPolyEffect::setData(const GrGLProgramDataManager& pdman, const GrDrawEffect& drawEffect) {
     const GrConvexPolyEffect& cpe = drawEffect.castEffect<GrConvexPolyEffect>();
     size_t byteSize = 3 * cpe.getEdgeCount() * sizeof(SkScalar);
     if (0 != memcmp(fPrevEdges, cpe.getEdges(), byteSize)) {
-        uman.set3fv(fEdgeUniform, cpe.getEdgeCount(), cpe.getEdges());
+        pdman.set3fv(fEdgeUniform, cpe.getEdgeCount(), cpe.getEdges());
         memcpy(fPrevEdges, cpe.getEdges(), byteSize);
     }
 }
 
-GrGLEffect::EffectKey GrGLConvexPolyEffect::GenKey(const GrDrawEffect& drawEffect,
-                                                   const GrGLCaps&) {
+void GrGLConvexPolyEffect::GenKey(const GrDrawEffect& drawEffect, const GrGLCaps&,
+                                  GrEffectKeyBuilder* b) {
     const GrConvexPolyEffect& cpe = drawEffect.castEffect<GrConvexPolyEffect>();
     GR_STATIC_ASSERT(kGrEffectEdgeTypeCnt <= 8);
-    return (cpe.getEdgeCount() << 3) | cpe.getEdgeType();
+    uint32_t key = (cpe.getEdgeCount() << 3) | cpe.getEdgeType();
+    b->add32(key);
 }
 
 //////////////////////////////////////////////////////////////////////////////

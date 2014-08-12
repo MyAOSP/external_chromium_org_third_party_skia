@@ -391,7 +391,7 @@ public:
     class GLEffect : public GrGLEffect {
     public:
         // this class always generates the same code.
-        static EffectKey GenKey(const GrDrawEffect&, const GrGLCaps&) { return 0; }
+        static void GenKey(const GrDrawEffect&, const GrGLCaps&, GrEffectKeyBuilder* b) {}
 
         GLEffect(const GrBackendEffectFactory& factory,
                  const GrDrawEffect&)
@@ -400,7 +400,7 @@ public:
 
         virtual void emitCode(GrGLShaderBuilder* builder,
                               const GrDrawEffect&,
-                              EffectKey,
+                              const GrEffectKey&,
                               const char* outputColor,
                               const char* inputColor,
                               const TransformedCoordsArray&,
@@ -428,7 +428,7 @@ public:
             builder->fsCodeAppendf("\t%s.rgb *= %s.a;\n", outputColor, outputColor);
         }
 
-        virtual void setData(const GrGLUniformManager& uniManager,
+        virtual void setData(const GrGLProgramDataManager& uniManager,
                              const GrDrawEffect& drawEffect) SK_OVERRIDE {
             const ColorMatrixEffect& cme = drawEffect.castEffect<ColorMatrixEffect>();
             const float* m = cme.fMatrix.fMat;
@@ -448,8 +448,8 @@ public:
         }
 
     private:
-        GrGLUniformManager::UniformHandle fMatrixHandle;
-        GrGLUniformManager::UniformHandle fVectorHandle;
+        GrGLProgramDataManager::UniformHandle fMatrixHandle;
+        GrGLProgramDataManager::UniformHandle fVectorHandle;
 
         typedef GrGLEffect INHERITED;
     };

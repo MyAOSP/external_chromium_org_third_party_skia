@@ -10,13 +10,15 @@
       'includes': [
         'pathops_unittest.gypi',
       ],
-      'dependencies': [ 'tools.gyp:crash_handler' ],
+      'dependencies': [
+        'flags.gyp:flags_common',
+        'tools.gyp:crash_handler',
+      ],
       'sources': [
         '../tests/PathOpsAngleIdeas.cpp',
         '../tests/PathOpsCubicLineIntersectionIdeas.cpp',
         '../tests/PathOpsDebug.cpp',
         '../tests/PathOpsOpLoopThreadedTest.cpp',
-        '../tests/PathOpsSkpClipTest.cpp',
         '../tests/skia_test.cpp',
       ],
       'conditions': [

@@ -143,8 +143,6 @@ protected:
     /**  PRIVATE / EXPERIMENTAL -- do not call */
     virtual void EXPERIMENTAL_optimize(const SkPicture* picture) SK_OVERRIDE;
     /**  PRIVATE / EXPERIMENTAL -- do not call */
-    virtual void EXPERIMENTAL_purge(const SkPicture* picture) SK_OVERRIDE;
-    /**  PRIVATE / EXPERIMENTAL -- do not call */
     virtual bool EXPERIMENTAL_drawPicture(SkCanvas* canvas, const SkPicture* picture) SK_OVERRIDE;
 
 private:
@@ -170,6 +168,8 @@ private:
     virtual SkBaseDevice* onCreateDevice(const SkImageInfo&, Usage) SK_OVERRIDE;
 
     virtual SkSurface* newSurface(const SkImageInfo&) SK_OVERRIDE;
+
+    virtual SkImageFilter::UniqueIDCache* getImageFilterCache() SK_OVERRIDE;
 
     // sets the render target, clip, and matrix on GrContext. Use forceIdenity to override
     // SkDraw's matrix and draw in device coords.

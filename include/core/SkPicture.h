@@ -190,6 +190,14 @@ public:
     bool suitableForGpuRasterization(GrContext*, const char ** = NULL) const;
 #endif
 
+    class DeletionListener : public SkRefCnt {
+    public:
+        virtual void onDeletion(uint32_t pictureID) = 0;
+    };
+
+    // Takes ref on listener.
+    void addDeletionListener(DeletionListener* listener) const;
+
 private:
     // V2 : adds SkPixelRef's generation ID.
     // V3 : PictInfo tag at beginning, and EOF tag at the end
@@ -222,13 +230,14 @@ private:
     // V28: No longer call bitmap::flatten inside SkWriteBuffer::writeBitmap.
     // V29: Removed SaveFlags parameter from save().
     // V30: Remove redundant SkMatrix from SkLocalMatrixShader.
+    // V31: Add a serialized UniqueID to SkImageFilter.
 
     // Note: If the picture version needs to be increased then please follow the
     // steps to generate new SKPs in (only accessible to Googlers): http://goo.gl/qATVcw
 
     // Only SKPs within the min/current picture version range (inclusive) can be read.
     static const uint32_t MIN_PICTURE_VERSION = 19;
-    static const uint32_t CURRENT_PICTURE_VERSION = 30;
+    static const uint32_t CURRENT_PICTURE_VERSION = 31;
 
     mutable uint32_t      fUniqueID;
 
@@ -237,7 +246,10 @@ private:
     int                   fWidth, fHeight;
     mutable SkAutoTUnref<const AccelData> fAccelData;
 
+    mutable SkTDArray<DeletionListener*> fDeletionListeners;  // pointers are refed
+
     void needsNewGenID() { fUniqueID = SK_InvalidGenID; }
+    void callDeletionListeners();
 
     // Create a new SkPicture from an existing SkPictureData. The new picture
     // takes ownership of 'data'.

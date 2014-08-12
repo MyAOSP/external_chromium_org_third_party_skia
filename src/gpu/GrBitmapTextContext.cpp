@@ -56,7 +56,7 @@ GrBitmapTextContext::GrBitmapTextContext(GrContext* context,
 
     fCurrTexture = NULL;
     fCurrVertex = 0;
-    fEffectTextureInstanceID = 0;
+    fEffectTextureUniqueID = SK_InvalidUniqueID;
 
     fVertices = NULL;
     fMaxVertices = 0;
@@ -94,11 +94,11 @@ void GrBitmapTextContext::flushGlyphs() {
         SkASSERT(fCurrTexture);
         GrTextureParams params(SkShader::kRepeat_TileMode, GrTextureParams::kNone_FilterMode);
 
-        uint64_t textureInstanceID = fCurrTexture->getInstanceID();
+        uint32_t textureUniqueID = fCurrTexture->getUniqueID();
         
-        if (textureInstanceID != fEffectTextureInstanceID) {
+        if (textureUniqueID != fEffectTextureUniqueID) {
             fCachedEffect.reset(GrCustomCoordsTextureEffect::Create(fCurrTexture, params));
-            fEffectTextureInstanceID = textureInstanceID;
+            fEffectTextureUniqueID = textureUniqueID;
         }
 
         // This effect could be stored with one of the cache objects (atlas?)
@@ -138,10 +138,8 @@ void GrBitmapTextContext::flushGlyphs() {
             case kA8_GrMaskFormat:
                 // set back to normal in case we took LCD path previously.
                 drawState->setBlendFunc(fPaint.getSrcBlendCoeff(), fPaint.getDstBlendCoeff());
-                //drawState->setColor(fPaint.getColor());
                 // We're using per-vertex color.
                 SkASSERT(drawState->hasColorVertexAttribute());
-                drawState->setColor(0xFFFFFFFF);
                 break;
             default:
                 SkFAIL("Unexepected mask format.");

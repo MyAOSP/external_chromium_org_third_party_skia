@@ -526,9 +526,9 @@ static SkTypeface* NewFromName(const char familyName[], SkTypeface::Style theSty
     return ctFont ? NewFromFontRef(ctFont, familyName, false) : NULL;
 }
 
+SK_DECLARE_STATIC_MUTEX(gGetDefaultFaceMutex);
 static SkTypeface* GetDefaultFace() {
-    SK_DECLARE_STATIC_MUTEX(gMutex);
-    SkAutoMutexAcquire ma(gMutex);
+    SkAutoMutexAcquire ma(gGetDefaultFaceMutex);
 
     static SkTypeface* gDefaultFace;
 
@@ -958,7 +958,7 @@ void SkScalerContext_Mac::generateAdvance(SkGlyph* glyph) {
 }
 
 void SkScalerContext_Mac::generateMetrics(SkGlyph* glyph) {
-    const CGGlyph cgGlyph = (CGGlyph) glyph->getGlyphID(fBaseGlyphCount);
+    const CGGlyph cgGlyph = (CGGlyph) glyph->getGlyphID();
     glyph->zeroMetrics();
 
     // The following block produces cgAdvance in CG units (pixels, y up).
@@ -1203,7 +1203,7 @@ template <typename T> T* SkTAddByteOffset(T* ptr, size_t byteOffset) {
 }
 
 void SkScalerContext_Mac::generateImage(const SkGlyph& glyph) {
-    CGGlyph cgGlyph = (CGGlyph) glyph.getGlyphID(fBaseGlyphCount);
+    CGGlyph cgGlyph = (CGGlyph) glyph.getGlyphID();
 
     // FIXME: lcd smoothed un-hinted rasterization unsupported.
     bool generateA8FromLCD = fRec.getHinting() != SkPaint::kNo_Hinting;
@@ -1342,7 +1342,7 @@ void SkScalerContext_Mac::generatePath(const SkGlyph& glyph, SkPath* path) {
         font = CTFontCreateCopyWithAttributes(fCTFont, 1, &xform, NULL);
     }
 
-    CGGlyph cgGlyph = (CGGlyph)glyph.getGlyphID(fBaseGlyphCount);
+    CGGlyph cgGlyph = (CGGlyph)glyph.getGlyphID();
     AutoCFRelease<CGPathRef> cgPath(CTFontCreatePathForGlyph(font, cgGlyph, NULL));
 
     path->reset();

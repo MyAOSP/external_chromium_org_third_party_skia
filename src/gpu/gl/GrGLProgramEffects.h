@@ -9,7 +9,7 @@
 #define GrGLProgramEffects_DEFINED
 
 #include "GrBackendEffectFactory.h"
-#include "GrGLUniformManager.h"
+#include "GrGLProgramDataManager.h"
 #include "GrTexture.h"
 #include "GrTextureAccess.h"
 
@@ -27,8 +27,7 @@ class GrGLFragmentOnlyShaderBuilder;
  */
 class GrGLProgramEffects : public SkRefCnt {
 public:
-    typedef GrBackendEffectFactory::EffectKey EffectKey;
-    typedef GrGLUniformManager::UniformHandle UniformHandle;
+    typedef GrGLProgramDataManager::UniformHandle UniformHandle;
 
     /**
      * This class emits some of the code inserted into the shaders for an effect. The code it
@@ -46,13 +45,13 @@ public:
      * Assigns a texture unit to each sampler. It starts on *texUnitIdx and writes the next
      * available unit to *texUnitIdx when it returns.
      */
-    void initSamplers(const GrGLUniformManager&, int* texUnitIdx);
+    void initSamplers(const GrGLProgramDataManager&, int* texUnitIdx);
 
     /**
      * Calls setData() on each effect, and sets their transformation matrices and texture bindings.
      */
     virtual void setData(GrGpuGL*,
-                         const GrGLUniformManager&,
+                         const GrGLProgramDataManager&,
                          const GrEffectStage* effectStages[]) = 0;
 
     /**
@@ -104,9 +103,9 @@ protected:
     /**
      * Helpers for GenEffectMetaKey.
      */
-    static EffectKey GenAttribKey(const GrDrawEffect&);
-    static EffectKey GenTransformKey(const GrDrawEffect&);
-    static EffectKey GenTextureKey(const GrDrawEffect&, const GrGLCaps&);
+    static uint32_t GenAttribKey(const GrDrawEffect&);
+    static uint32_t GenTransformKey(const GrDrawEffect&);
+    static uint32_t GenTextureKey(const GrDrawEffect&, const GrGLCaps&);
 
     GrGLProgramEffects(int reserveCount)
         : fGLEffects(reserveCount)
@@ -149,7 +148,7 @@ public:
      * Emits the effect's shader code, and stores the necessary uniforms internally.
      */
     virtual void emitEffect(const GrEffectStage&,
-                            GrGLProgramEffects::EffectKey,
+                            const GrEffectKey&,
                             const char* outColor,
                             const char* inColor,
                             int stageIndex) = 0;
@@ -163,7 +162,7 @@ public:
 class GrGLVertexProgramEffects : public GrGLProgramEffects {
 public:
     virtual void setData(GrGpuGL*,
-                         const GrGLUniformManager&,
+                         const GrGLProgramDataManager&,
                          const GrEffectStage* effectStages[]) SK_OVERRIDE;
 
 private:
@@ -181,7 +180,7 @@ private:
      */
     void emitEffect(GrGLFullShaderBuilder*,
                     const GrEffectStage&,
-                    GrGLProgramEffects::EffectKey,
+                    const GrEffectKey&,
                     const char* outColor,
                     const char* inColor,
                     int stageIndex);
@@ -205,7 +204,7 @@ private:
     /**
      * Helper for setData(). Sets all the transform matrices for an effect.
      */
-    void setTransformData(const GrGLUniformManager&, const GrDrawEffect&, int effectIdx);
+    void setTransformData(const GrGLProgramDataManager&, const GrDrawEffect&, int effectIdx);
 
     struct Transform {
         Transform() { fCurrentValue = SkMatrix::InvalidMatrix(); }
@@ -228,7 +227,7 @@ public:
     virtual ~GrGLVertexProgramEffectsBuilder() { }
 
     virtual void emitEffect(const GrEffectStage&,
-                            GrGLProgramEffects::EffectKey,
+                            const GrEffectKey&,
                             const char* outColor,
                             const char* inColor,
                             int stageIndex) SK_OVERRIDE;
@@ -255,7 +254,7 @@ private:
 class GrGLPathTexGenProgramEffects : public GrGLProgramEffects {
 public:
     virtual void setData(GrGpuGL*,
-                         const GrGLUniformManager&,
+                         const GrGLProgramDataManager&,
                          const GrEffectStage* effectStages[]) SK_OVERRIDE;
 
 private:
@@ -272,7 +271,7 @@ private:
      */
     void emitEffect(GrGLFragmentOnlyShaderBuilder*,
                     const GrEffectStage&,
-                    GrGLProgramEffects::EffectKey,
+                    const GrEffectKey&,
                     const char* outColor,
                     const char* inColor,
                     int stageIndex);
@@ -295,10 +294,10 @@ private:
     void setPathTexGenState(GrGpuGL*, const GrDrawEffect&, int effectIdx);
 
     struct Transforms {
-        Transforms(EffectKey transformKey, int texCoordIndex)
+        Transforms(uint32_t transformKey, int texCoordIndex)
             : fTransformKey(transformKey), fTexCoordIndex(texCoordIndex) {}
-        EffectKey fTransformKey;
-        int fTexCoordIndex;
+        uint32_t    fTransformKey;
+        int         fTexCoordIndex;
     };
 
     SkTArray<Transforms> fTransforms;
@@ -315,7 +314,7 @@ public:
     virtual ~GrGLPathTexGenProgramEffectsBuilder() { }
 
     virtual void emitEffect(const GrEffectStage&,
-                            GrGLProgramEffects::EffectKey,
+                            const GrEffectKey&,
                             const char* outColor,
                             const char* inColor,
                             int stageIndex) SK_OVERRIDE;

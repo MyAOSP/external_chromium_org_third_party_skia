@@ -10,9 +10,10 @@
 #define GrAtlas_DEFINED
 
 
-#include "SkPoint.h"
 #include "GrTexture.h"
 #include "GrDrawTarget.h"
+#include "SkPoint.h"
+#include "SkTInternalLList.h"
 
 class GrGpu;
 class GrRectanizer;
@@ -80,6 +81,12 @@ public:
     public:
         bool isEmpty() const { return 0 == fPlots.count(); }
 
+#ifdef SK_DEBUG
+        bool contains(const GrPlot* plot) const { 
+            return fPlots.contains(const_cast<GrPlot*>(plot)); 
+        }
+#endif
+
     private:
         SkTDArray<GrPlot*> fPlots;
 
@@ -110,6 +117,18 @@ public:
     }
 
     void uploadPlotsToTexture();
+
+    enum IterOrder {
+        kLRUFirst_IterOrder,
+        kMRUFirst_IterOrder
+    };
+
+    typedef GrPlotList::Iter PlotIter;
+    GrPlot* iterInit(PlotIter* iter, IterOrder order) {
+        return iter->init(fPlotList, kLRUFirst_IterOrder == order 
+                                                       ? GrPlotList::Iter::kTail_IterStart
+                                                       : GrPlotList::Iter::kHead_IterStart);
+    }
 
 private:
     void makeMRU(GrPlot* plot);

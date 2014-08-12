@@ -38,7 +38,10 @@
 #include "SkTLazy.h"
 #include "SkUtils.h"
 #include "SkVertState.h"
+#include "SkXfermode.h"
 #include "SkErrorInternals.h"
+
+enum { kDefaultImageFilterCacheSize = 32 * 1024 * 1024 };
 
 #define CACHE_COMPATIBLE_DEVICE_TEXTURES 1
 
@@ -1378,7 +1381,7 @@ void SkGpuDevice::internalDrawBitmap(const SkBitmap& bitmap,
                                        SkColor2GrColor(paint.getColor());
     SkPaint2GrPaintNoShader(this->context(), paint, paintColor, false, &grPaint);
 
-    fContext->drawRectToRect(grPaint, dstRect, paintRect, NULL);
+    fContext->drawRectToRect(grPaint, dstRect, paintRect);
 }
 
 static bool filter_texture(SkBaseDevice* device, GrContext* context,
@@ -1424,8 +1427,9 @@ void SkGpuDevice::drawSprite(const SkDraw& draw, const SkBitmap& bitmap,
         SkMatrix matrix(*draw.fMatrix);
         matrix.postTranslate(SkIntToScalar(-left), SkIntToScalar(-top));
         SkIRect clipBounds = SkIRect::MakeWH(bitmap.width(), bitmap.height());
-        SkImageFilter::Cache* cache = SkImageFilter::Cache::Create();
-        SkAutoUnref aur(cache);
+        SkAutoTUnref<SkImageFilter::UniqueIDCache> cache(getImageFilterCache());
+        // This cache is transient, and is freed (along with all its contained
+        // textures) when it goes out of scope.
         SkImageFilter::Context ctx(matrix, clipBounds, cache);
         if (filter_texture(this, fContext, texture, filter, w, h, ctx, &filteredBitmap,
                            &offset)) {
@@ -1534,8 +1538,9 @@ void SkGpuDevice::drawDevice(const SkDraw& draw, SkBaseDevice* device,
         SkMatrix matrix(*draw.fMatrix);
         matrix.postTranslate(SkIntToScalar(-x), SkIntToScalar(-y));
         SkIRect clipBounds = SkIRect::MakeWH(devTex->width(), devTex->height());
-        SkImageFilter::Cache* cache = SkImageFilter::Cache::Create();
-        SkAutoUnref aur(cache);
+        // This cache is transient, and is freed (along with all its contained
+        // textures) when it goes out of scope.
+        SkAutoTUnref<SkImageFilter::UniqueIDCache> cache(getImageFilterCache());
         SkImageFilter::Context ctx(matrix, clipBounds, cache);
         if (filter_texture(this, fContext, devTex, filter, w, h, ctx, &filteredBitmap,
                            &offset)) {
@@ -1617,7 +1622,7 @@ void SkGpuDevice::drawVertices(const SkDraw& draw, SkCanvas::VertexMode vmode,
     SkAutoTDeleteArray<uint16_t> outAlloc(NULL);
     GrPrimitiveType primType;
     GrPaint grPaint;
-    
+
     // If both textures and vertex-colors are NULL, strokes hairlines with the paint's color.
     if ((NULL == texs || NULL == paint.getShader()) && NULL == colors) {
         
@@ -1633,13 +1638,14 @@ void SkGpuDevice::drawVertices(const SkDraw& draw, SkCanvas::VertexMode vmode,
 
         primType = kLines_GrPrimitiveType;
         int triangleCount = 0;
+        int n = (NULL == indices) ? vertexCount : indexCount;
         switch (vmode) {
             case SkCanvas::kTriangles_VertexMode:
-                triangleCount = indexCount / 3;
+                triangleCount = n / 3;
                 break;
             case SkCanvas::kTriangleStrip_VertexMode:
             case SkCanvas::kTriangleFan_VertexMode:
-                triangleCount = indexCount - 2;
+                triangleCount = n - 2;
                 break;
         }
         
@@ -1842,6 +1848,8 @@ SkSurface* SkGpuDevice::newSurface(const SkImageInfo& info) {
 }
 
 void SkGpuDevice::EXPERIMENTAL_optimize(const SkPicture* picture) {
+    fContext->getLayerCache()->processDeletedPictures();
+
     SkPicture::AccelData::Key key = GPUAccelData::ComputeAccelDataKey();
 
     const SkPicture::AccelData* existing = picture->EXPERIMENTAL_getAccelData(key);
@@ -1854,6 +1862,8 @@ void SkGpuDevice::EXPERIMENTAL_optimize(const SkPicture* picture) {
     picture->EXPERIMENTAL_addAccelData(data);
 
     GatherGPUInfo(picture, data);
+
+    fContext->getLayerCache()->trackPicture(picture);
 }
 
 static void wrap_texture(GrTexture* texture, int width, int height, SkBitmap* result) {
@@ -1862,11 +1872,8 @@ static void wrap_texture(GrTexture* texture, int width, int height, SkBitmap* re
     result->setPixelRef(SkNEW_ARGS(SkGrPixelRef, (info, texture)))->unref();
 }
 
-void SkGpuDevice::EXPERIMENTAL_purge(const SkPicture* picture) {
-    fContext->getLayerCache()->purge(picture);
-}
-
-bool SkGpuDevice::EXPERIMENTAL_drawPicture(SkCanvas* canvas, const SkPicture* picture) {
+bool SkGpuDevice::EXPERIMENTAL_drawPicture(SkCanvas* mainCanvas, const SkPicture* picture) {
+    fContext->getLayerCache()->processDeletedPictures();
 
     SkPicture::AccelData::Key key = GPUAccelData::ComputeAccelDataKey();
 
@@ -1887,7 +1894,7 @@ bool SkGpuDevice::EXPERIMENTAL_drawPicture(SkCanvas* canvas, const SkPicture* pi
     }
 
     SkRect clipBounds;
-    if (!canvas->getClipBounds(&clipBounds)) {
+    if (!mainCanvas->getClipBounds(&clipBounds)) {
         return true;
     }
     SkIRect query;
@@ -1964,12 +1971,18 @@ bool SkGpuDevice::EXPERIMENTAL_drawPicture(SkCanvas* canvas, const SkPicture* pi
 
     SkPictureReplacementPlayback::PlaybackReplacements replacements;
 
+    SkTDArray<GrCachedLayer*> atlased, nonAtlased;
+    atlased.setReserve(gpuData->numSaveLayers());
+
     // Generate the layer and/or ensure it is locked
     for (int i = 0; i < gpuData->numSaveLayers(); ++i) {
         if (pullForward[i]) {
-            GrCachedLayer* layer = fContext->getLayerCache()->findLayerOrCreate(picture, i);
-
             const GPUAccelData::SaveLayerInfo& info = gpuData->saveLayerInfo(i);
+
+            GrCachedLayer* layer = fContext->getLayerCache()->findLayerOrCreate(picture, 
+                                                                                info.fSaveLayerOpID, 
+                                                                                info.fRestoreOpID, 
+                                                                                info.fCTM);
 
             SkPictureReplacementPlayback::PlaybackReplacements::ReplacementInfo* layerInfo =
                                                                         replacements.push();
@@ -2003,57 +2016,118 @@ bool SkGpuDevice::EXPERIMENTAL_drawPicture(SkCanvas* canvas, const SkPicture* pi
                                                     layer->rect().width(),
                                                     layer->rect().height());
 
-
             if (needsRendering) {
-                SkAutoTUnref<SkSurface> surface(SkSurface::NewRenderTargetDirect(
-                                                    layer->texture()->asRenderTarget(),
-                                                    SkSurface::kStandard_TextRenderMode,
-                                                    SkSurface::kDontClear_RenderTargetFlag));
-
-                SkCanvas* canvas = surface->getCanvas();
-
-                // Add a rect clip to make sure the rendering doesn't
-                // extend beyond the boundaries of the atlased sub-rect
-                SkRect bound = SkRect::Make(layerInfo->fSrcRect);
-                canvas->clipRect(bound);
-
                 if (layer->isAtlased()) {
-                    // Since 'clear' doesn't respect the clip we need to draw a rect
-                    // TODO: ensure none of the atlased layers contain a clear call!
-                    SkPaint paint;
-                    paint.setColor(SK_ColorTRANSPARENT);
-                    canvas->drawRect(bound, paint);
+                    *atlased.append() = layer;
                 } else {
-                    canvas->clear(SK_ColorTRANSPARENT);
+                    *nonAtlased.append() = layer;
                 }
-
-                // info.fCTM maps the layer's top/left to the origin.
-                // If this layer is atlased the top/left corner needs
-                // to be offset to some arbitrary location in the backing 
-                // texture.
-                canvas->translate(bound.fLeft, bound.fTop);
-                canvas->concat(info.fCTM);
-
-                SkPictureRangePlayback rangePlayback(picture,
-                                                     info.fSaveLayerOpID, 
-                                                     info.fRestoreOpID);
-                rangePlayback.draw(canvas, NULL);
-
-                canvas->flush();
             }
         }
     }
 
-    // Playback using new layers
+    // Render the atlased layers that require it
+    if (atlased.count() > 0) {
+        // All the atlased layers are rendered into the same GrTexture
+        SkAutoTUnref<SkSurface> surface(SkSurface::NewRenderTargetDirect(
+                                        atlased[0]->texture()->asRenderTarget(),
+                                        SkSurface::kStandard_TextRenderMode,
+                                        SkSurface::kDontClear_RenderTargetFlag));
+
+        SkCanvas* atlasCanvas = surface->getCanvas();
+
+        SkPaint paint;
+        paint.setColor(SK_ColorTRANSPARENT);
+        paint.setXfermode(SkXfermode::Create(SkXfermode::kSrc_Mode))->unref();
+
+        for (int i = 0; i < atlased.count(); ++i) {
+            GrCachedLayer* layer = atlased[i];
+
+            atlasCanvas->save();
+
+            // Add a rect clip to make sure the rendering doesn't
+            // extend beyond the boundaries of the atlased sub-rect
+            SkRect bound = SkRect::MakeXYWH(SkIntToScalar(layer->rect().fLeft),
+                                            SkIntToScalar(layer->rect().fTop),
+                                            SkIntToScalar(layer->rect().width()),
+                                            SkIntToScalar(layer->rect().height()));
+            atlasCanvas->clipRect(bound);
+
+            // Since 'clear' doesn't respect the clip we need to draw a rect
+            // TODO: ensure none of the atlased layers contain a clear call!
+            atlasCanvas->drawRect(bound, paint);
+
+            // info.fCTM maps the layer's top/left to the origin.
+            // Since this layer is atlased, the top/left corner needs
+            // to be offset to the correct location in the backing texture.
+            atlasCanvas->translate(bound.fLeft, bound.fTop);
+            atlasCanvas->concat(layer->ctm());
+
+            SkPictureRangePlayback rangePlayback(picture,
+                                                 layer->start(),
+                                                 layer->stop());
+            rangePlayback.draw(atlasCanvas, NULL);
+
+            atlasCanvas->restore();
+        }
+
+        atlasCanvas->flush();
+    }
+
+    // Render the non-atlased layers that require it
+    for (int i = 0; i < nonAtlased.count(); ++i) {
+        GrCachedLayer* layer = nonAtlased[i];
+
+        // Each non-atlased layer has its own GrTexture
+        SkAutoTUnref<SkSurface> surface(SkSurface::NewRenderTargetDirect(
+                                        layer->texture()->asRenderTarget(),
+                                        SkSurface::kStandard_TextRenderMode,
+                                        SkSurface::kDontClear_RenderTargetFlag));
+
+        SkCanvas* layerCanvas = surface->getCanvas();
+
+        // Add a rect clip to make sure the rendering doesn't
+        // extend beyond the boundaries of the atlased sub-rect
+        SkRect bound = SkRect::MakeXYWH(SkIntToScalar(layer->rect().fLeft),
+                                        SkIntToScalar(layer->rect().fTop),
+                                        SkIntToScalar(layer->rect().width()),
+                                        SkIntToScalar(layer->rect().height()));
+
+        layerCanvas->clipRect(bound); // TODO: still useful?
+
+        layerCanvas->clear(SK_ColorTRANSPARENT);
+
+        layerCanvas->concat(layer->ctm());
+
+        SkPictureRangePlayback rangePlayback(picture,
+                                             layer->start(),
+                                             layer->stop());
+        rangePlayback.draw(layerCanvas, NULL);
+
+        layerCanvas->flush();
+    }
+
+    // Render the entire picture using new layers
     SkPictureReplacementPlayback playback(picture, &replacements, ops.get());
 
-    playback.draw(canvas, NULL);
+    playback.draw(mainCanvas, NULL);
 
     // unlock the layers
     for (int i = 0; i < gpuData->numSaveLayers(); ++i) {
-        GrCachedLayer* layer = fContext->getLayerCache()->findLayer(picture, i);
+        const GPUAccelData::SaveLayerInfo& info = gpuData->saveLayerInfo(i);
+
+        GrCachedLayer* layer = fContext->getLayerCache()->findLayer(picture, 
+                                                                    info.fSaveLayerOpID,
+                                                                    info.fRestoreOpID,
+                                                                    info.fCTM);
         fContext->getLayerCache()->unlock(layer);
     }
 
     return true;
+}
+
+SkImageFilter::UniqueIDCache* SkGpuDevice::getImageFilterCache() {
+    // We always return a transient cache, so it is freed after each
+    // filter traversal.
+    return SkImageFilter::UniqueIDCache::Create(kDefaultImageFilterCacheSize);
 }

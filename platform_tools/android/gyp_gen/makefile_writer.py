@@ -117,14 +117,10 @@ SKIA_TOOLS = (
 #
 
 # benchmark (timings)
-include $(BASE_PATH)/bench/Android.mk
 include $(BASE_PATH)/tools/Android.mk
 
 # golden-master (fidelity / regression test)
 include $(BASE_PATH)/gm/Android.mk
-
-# unit-tests
-include $(BASE_PATH)/tests/Android.mk
 
 # diamond-master (one test to rule them all)
 include $(BASE_PATH)/dm/Android.mk
@@ -198,6 +194,7 @@ def write_android_mk(target_dir, common, deviations_from_common):
     f.write(DEBUGGING_HELP)
 
     write_clear_vars(f)
+    f.write('LOCAL_FDO_SUPPORT := true\n')
     f.write('LOCAL_ARM_MODE := thumb\n')
 
     # need a flag to tell the C side when we're on devices with large memory
