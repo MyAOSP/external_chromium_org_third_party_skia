@@ -973,6 +973,20 @@ public:
     */
     void drawPicture(const SkPicture* picture);
 
+    /**
+     *  Draw the picture into this canvas.
+     *
+     *  If matrix is non-null, apply that matrix to the CTM when drawing this picture. This is
+     *  logically equivalent to
+     *      save/concat/drawPicture/restore
+     *
+     *  If paint is non-null, draw the picture into a temporary buffer, and then apply the paint's
+     *  alpha/colorfilter/imagefilter/xfermode to that buffer as it is drawn to the canvas.
+     *  This is logically equivalent to
+     *      saveLayer(paint)/drawPicture/restore
+     */
+    void drawPicture(const SkPicture*, const SkMatrix* matrix, const SkPaint* paint);
+
     enum VertexMode {
         kTriangles_VertexMode,
         kTriangleStrip_VertexMode,
@@ -1008,6 +1022,13 @@ public:
                               const uint16_t indices[], int indexCount,
                               const SkPaint& paint);
     
+    /** 
+     
+     Draw a SkPatch
+     
+     @param patch specifies the 4 bounding cubic bezier curves of a patch.
+     @param paint Specifies the shader/texture if present.
+     */
     virtual void drawPatch(const SkPatch& patch, const SkPaint& paint);
 
     /** Send a blob of data to the canvas.
@@ -1216,7 +1237,9 @@ protected:
 
     virtual void onDiscard();
 
-    virtual void onDrawPicture(const SkPicture* picture);
+    // temporary, until we can migrate existing overrides in chrome
+    virtual void onDrawPicture(const SkPicture*) {}
+    virtual void onDrawPicture(const SkPicture*, const SkMatrix*, const SkPaint*);
 
     // Returns the canvas to be used by DrawIter. Default implementation
     // returns this. Subclasses that encapsulate an indirect canvas may

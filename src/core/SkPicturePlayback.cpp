@@ -306,6 +306,12 @@ void SkPicturePlayback::handleOp(SkReader32* reader,
         case DRAW_PAINT:
             canvas->drawPaint(*fPictureData->getPaint(reader));
             break;
+        case DRAW_PATCH: {
+            const SkPaint& paint = *fPictureData->getPaint(reader);
+            SkPatch patch;
+            reader->readPatch(&patch);
+            canvas->drawPatch(patch, paint);
+        } break;
         case DRAW_PATH: {
             const SkPaint& paint = *fPictureData->getPaint(reader);
             canvas->drawPath(fPictureData->getPath(reader), paint);
@@ -313,6 +319,13 @@ void SkPicturePlayback::handleOp(SkReader32* reader,
         case DRAW_PICTURE:
             canvas->drawPicture(fPictureData->getPicture(reader));
             break;
+        case DRAW_PICTURE_MATRIX_PAINT: {
+            const SkPicture* pic = fPictureData->getPicture(reader);
+            SkMatrix matrix;
+            reader->readMatrix(&matrix);
+            const SkPaint* paint = fPictureData->getPaint(reader);
+            canvas->drawPicture(pic, &matrix, paint);
+        } break;
         case DRAW_POINTS: {
             const SkPaint& paint = *fPictureData->getPaint(reader);
             SkCanvas::PointMode mode = (SkCanvas::PointMode)reader->readInt();

@@ -136,8 +136,9 @@ void SkProxyCanvas::onDrawTextOnPath(const void* text, size_t byteLength, const 
     fProxy->drawTextOnPath(text, byteLength, path, matrix, paint);
 }
 
-void SkProxyCanvas::onDrawPicture(const SkPicture* picture) {
-    fProxy->drawPicture(picture);
+void SkProxyCanvas::onDrawPicture(const SkPicture* picture, const SkMatrix* matrix,
+                                  const SkPaint* paint) {
+    fProxy->drawPicture(picture, matrix, paint);
 }
 
 void SkProxyCanvas::drawVertices(VertexMode vmode, int vertexCount,
@@ -147,6 +148,10 @@ void SkProxyCanvas::drawVertices(VertexMode vmode, int vertexCount,
                                  const SkPaint& paint) {
     fProxy->drawVertices(vmode, vertexCount, vertices, texs, colors,
                                      xmode, indices, indexCount, paint);
+}
+
+void SkProxyCanvas::drawPatch(const SkPatch& patch, const SkPaint& paint) {
+    fProxy->drawPatch(patch, paint);
 }
 
 void SkProxyCanvas::drawData(const void* data, size_t length) {

@@ -55,6 +55,7 @@ public:
                               const SkColor colors[], SkXfermode* xfer,
                               const uint16_t indices[], int indexCount,
                               const SkPaint& paint) SK_OVERRIDE;
+    virtual void drawPatch(const SkPatch& patch, const SkPaint& paint) SK_OVERRIDE;
 
 protected:
     virtual void onDrawDRRect(const SkRRect&, const SkRRect&, const SkPaint&) SK_OVERRIDE;
@@ -66,7 +67,7 @@ protected:
                                 SkScalar constY, const SkPaint&) SK_OVERRIDE;
     virtual void onDrawTextOnPath(const void* text, size_t byteLength, const SkPath& path,
                                   const SkMatrix* matrix, const SkPaint&) SK_OVERRIDE;
-    virtual void onDrawPicture(const SkPicture* picture) SK_OVERRIDE;
+    virtual void onDrawPicture(const SkPicture*, const SkMatrix*, const SkPaint*) SK_OVERRIDE;
     virtual void willSave() SK_OVERRIDE;
     virtual SaveLayerStrategy willSaveLayer(const SkRect*, const SkPaint*, SaveFlags) SK_OVERRIDE;
     virtual void willRestore() SK_OVERRIDE;

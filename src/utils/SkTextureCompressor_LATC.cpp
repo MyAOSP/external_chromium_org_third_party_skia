@@ -8,6 +8,7 @@
 #include "SkTextureCompressor_LATC.h"
 #include "SkTextureCompressor_Blitter.h"
 
+#include "SkBlitter.h"
 #include "SkEndian.h"
 
 // Compression options. In general, the slow version is much more accurate, but
@@ -413,6 +414,23 @@ void decompress_latc_block(uint8_t* dst, int dstRowBytes, const uint8_t* src) {
     }
 }
 
+// This is the type passed as the CompressorType argument of the compressed
+// blitter for the LATC format. The static functions required to be in this
+// struct are documented in SkTextureCompressor_Blitter.h
+struct CompressorLATC {
+    static inline void CompressA8Vertical(uint8_t* dst, const uint8_t block[]) {
+        compress_a8_latc_block<PackColumnMajor>(&dst, block, 4);
+    }
+
+    static inline void CompressA8Horizontal(uint8_t* dst, const uint8_t* src,
+                                            int srcRowBytes) {
+        compress_a8_latc_block<PackRowMajor>(&dst, src, srcRowBytes);
+    }
+
+    static inline void UpdateBlock(uint8_t* dst, const uint8_t* src) {
+    }
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 namespace SkTextureCompressor {
@@ -427,10 +445,23 @@ bool CompressA8ToLATC(uint8_t* dst, const uint8_t* src, int width, int height, i
 #endif
 }
 
-SkBlitter* CreateLATCBlitter(int width, int height, void* outputBuffer) {
+SkBlitter* CreateLATCBlitter(int width, int height, void* outputBuffer,
+                             SkTBlitterAllocator* allocator) {
+    if ((width % 4) != 0 || (height % 4) != 0) {
+        return NULL;
+    }
+
 #if COMPRESS_LATC_FAST
-    return new
-        SkTCompressedAlphaBlitter<4, 8, CompressA8LATCBlockVertical>
+    // Memset the output buffer to an encoding that decodes to zero. We must do this
+    // in order to avoid having uninitialized values in the buffer if the blitter
+    // decides not to write certain scanlines (and skip entire rows of blocks).
+    // In the case of LATC, if everything is zero, then LUM0 and LUM1 are also zero,
+    // and they will only be non-zero (0xFF) if the index is 7. So bzero will do just fine.
+    // (8 bytes per block) * (w * h / 16 blocks) = w * h / 2
+    sk_bzero(outputBuffer, width * height / 2);
+
+    return allocator->createT<
+        SkTCompressedAlphaBlitter<4, 8, CompressorLATC>, int, int, void* >
         (width, height, outputBuffer);
 #elif COMPRESS_LATC_SLOW
     // TODO (krajcevski)

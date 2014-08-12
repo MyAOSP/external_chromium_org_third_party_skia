@@ -61,6 +61,7 @@ public:
                       const uint16_t indices[],
                       int indexCount,
                       const SkPaint& paint) SK_OVERRIDE;
+    void drawPatch(const SkPatch& patch, const SkPaint& paint) SK_OVERRIDE;
 
     void willSave() SK_OVERRIDE;
     SaveLayerStrategy willSaveLayer(const SkRect*, const SkPaint*, SkCanvas::SaveFlags) SK_OVERRIDE;
@@ -94,7 +95,7 @@ public:
     void onClipPath(const SkPath& path, SkRegion::Op op, ClipEdgeStyle edgeStyle) SK_OVERRIDE;
     void onClipRegion(const SkRegion& deviceRgn, SkRegion::Op op) SK_OVERRIDE;
 
-    void onDrawPicture(const SkPicture* picture) SK_OVERRIDE;
+    void onDrawPicture(const SkPicture*, const SkMatrix*, const SkPaint*) SK_OVERRIDE;
 
     void onPushCull(const SkRect& cullRect) SK_OVERRIDE;
     void onPopCull() SK_OVERRIDE;
@@ -104,7 +105,7 @@ private:
     T* copy(const T*);
 
     template <typename T>
-    T* copy(const T[], unsigned count);
+    T* copy(const T[], size_t count);
 
     SkRecord* fRecord;
 };

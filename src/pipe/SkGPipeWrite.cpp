@@ -254,6 +254,7 @@ public:
                           const SkColor colors[], SkXfermode*,
                           const uint16_t indices[], int indexCount,
                               const SkPaint&) SK_OVERRIDE;
+    virtual void drawPatch(const SkPatch& patch, const SkPaint& paint) SK_OVERRIDE;
     virtual void drawData(const void*, size_t) SK_OVERRIDE;
     virtual void beginCommentGroup(const char* description) SK_OVERRIDE;
     virtual void addComment(const char* kywd, const char* value) SK_OVERRIDE;
@@ -288,7 +289,7 @@ protected:
     virtual void onClipPath(const SkPath&, SkRegion::Op, ClipEdgeStyle) SK_OVERRIDE;
     virtual void onClipRegion(const SkRegion&, SkRegion::Op) SK_OVERRIDE;
 
-    virtual void onDrawPicture(const SkPicture* picture) SK_OVERRIDE;
+    virtual void onDrawPicture(const SkPicture*, const SkMatrix*, const SkPaint*) SK_OVERRIDE;
 
 private:
     void recordTranslate(const SkMatrix&);
@@ -932,9 +933,14 @@ void SkGPipeCanvas::onDrawTextOnPath(const void* text, size_t byteLength, const 
     }
 }
 
-void SkGPipeCanvas::onDrawPicture(const SkPicture* picture) {
+void SkGPipeCanvas::onDrawPicture(const SkPicture* picture, const SkMatrix* matrix,
+                                  const SkPaint* paint) {
     // we want to playback the picture into individual draw calls
-    this->INHERITED::onDrawPicture(picture);
+    //
+    // todo: do we always have to unroll? If the pipe is not cross-process, seems like
+    // we could just ref the picture and move on...? <reed, scroggo>
+    //
+    this->INHERITED::onDrawPicture(picture, matrix, paint);
 }
 
 void SkGPipeCanvas::drawVertices(VertexMode vmode, int vertexCount,
@@ -994,6 +1000,15 @@ void SkGPipeCanvas::drawVertices(VertexMode vmode, int vertexCount,
             fWriter.write32(indexCount);
             fWriter.writePad(indices, indexCount * sizeof(uint16_t));
         }
+    }
+}
+
+void SkGPipeCanvas::drawPatch(const SkPatch& patch, const SkPaint& paint) {
+    NOTIFY_SETUP(this);
+    this->writePaint(paint);
+    if (this->needOpBytes(patch.writeToMemory(NULL))) {
+        this->writeOp(kDrawPatch_DrawOp);
+        fWriter.writePatch(patch);
     }
 }
 

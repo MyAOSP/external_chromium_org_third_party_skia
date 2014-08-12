@@ -44,7 +44,7 @@ DEFINE_bool(abandonGpuContext, false, "Abandon the GrContext after running each 
 
 DEFINE_bool2(single, z, false, "run tests on a single thread internally.");
 
-DEFINE_string(skps, "", "Directory to read skps from.");
+DEFINE_string(skps, "skps", "Directory to read skps from.");
 
 DEFINE_int32(threads, SkThreadPool::kThreadPerCore,
              "run threadsafe tests on a threadpool with this many threads.");
@@ -52,3 +52,5 @@ DEFINE_int32(threads, SkThreadPool::kThreadPerCore,
 DEFINE_bool2(verbose, v, false, "enable verbose output from the test driver.");
 
 DEFINE_bool2(veryVerbose, V, false, "tell individual tests to be verbose.");
+
+DEFINE_string2(writePath, w, "", "If set, write bitmaps here as .pngs.");

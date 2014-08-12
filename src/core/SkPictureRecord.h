@@ -10,9 +10,6 @@
 
 #include "SkCanvas.h"
 #include "SkFlattenable.h"
-#ifdef SK_COLLAPSE_MATRIX_CLIP_STATE
-#include "SkMatrixClipStateMgr.h"
-#endif
 #include "SkPathHeap.h"
 #include "SkPicture.h"
 #include "SkPictureData.h"
@@ -61,6 +58,7 @@ public:
                           const SkColor colors[], SkXfermode*,
                           const uint16_t indices[], int indexCount,
                               const SkPaint&) SK_OVERRIDE;
+    virtual void drawPatch(const SkPatch& patch, const SkPaint& paint) SK_OVERRIDE;
     virtual void drawData(const void*, size_t) SK_OVERRIDE;
     virtual void beginCommentGroup(const char* description) SK_OVERRIDE;
     virtual void addComment(const char* kywd, const char* value) SK_OVERRIDE;
@@ -119,13 +117,11 @@ private:
     size_t recordRestoreOffsetPlaceholder(SkRegion::Op);
     void fillRestoreOffsetPlaceholdersForCurrentStackLevel(uint32_t restoreOffset);
 
-#ifndef SK_COLLAPSE_MATRIX_CLIP_STATE
     SkTDArray<int32_t> fRestoreOffsetStack;
     int fFirstSavedLayerIndex;
     enum {
         kNoSavedLayerIndex = -1
     };
-#endif
 
     SkTDArray<uint32_t> fCullOffsetStack;
 
@@ -145,6 +141,7 @@ private:
         size_t offset = fWriter.bytesWritten();
 
         this->predrawNotify();
+        fContentInfo.addOperation();
 
     #ifdef SK_DEBUG_TRACE
         SkDebugf("add %s\n", DrawTypeToString(drawType));
@@ -177,6 +174,7 @@ private:
     const SkFlatData* addPaint(const SkPaint& paint) { return this->addPaintPtr(&paint); }
     const SkFlatData* addPaintPtr(const SkPaint* paint);
     void addFlatPaint(const SkFlatData* flatPaint);
+    void addPatch(const SkPatch& patch);
     void addPath(const SkPath& path);
     void addPicture(const SkPicture* picture);
     void addPoint(const SkPoint& point);
@@ -258,7 +256,7 @@ protected:
     virtual void onClipPath(const SkPath&, SkRegion::Op, ClipEdgeStyle) SK_OVERRIDE;
     virtual void onClipRegion(const SkRegion&, SkRegion::Op) SK_OVERRIDE;
 
-    virtual void onDrawPicture(const SkPicture* picture) SK_OVERRIDE;
+    virtual void onDrawPicture(const SkPicture*, const SkMatrix*, const SkPaint*) SK_OVERRIDE;
 
     // Return fontmetrics.fTop,fBottom in topbot[0,1], after they have been
     // tweaked by paint.computeFastBounds().
@@ -307,7 +305,6 @@ protected:
 
 private:
     friend class MatrixClipState; // for access to *Impl methods
-    friend class SkMatrixClipStateMgr; // for access to *Impl methods
 
     SkPictureContentInfo fContentInfo;
     SkAutoTUnref<SkPathHeap> fPathHeap;
@@ -327,10 +324,6 @@ private:
 
     friend class SkPictureData;   // for SkPictureData's SkPictureRecord-based constructor
     friend class SkPictureTester; // for unit testing
-
-#ifdef SK_COLLAPSE_MATRIX_CLIP_STATE
-    SkMatrixClipStateMgr fMCMgr;
-#endif
 
     typedef SkCanvas INHERITED;
 };

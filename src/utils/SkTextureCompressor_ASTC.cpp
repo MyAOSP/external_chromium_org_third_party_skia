@@ -793,7 +793,11 @@ static bool decode_integer_sequence(
                 endBlockBit = endBit;
             }
 
-            decode_trit_block(dst, nBits, read_astc_bits(src, startBit, endBlockBit));
+            // Trit blocks are three values large.
+            int trits[5];
+            decode_trit_block(trits, nBits, read_astc_bits(src, startBit, endBlockBit));
+            memcpy(dst, trits, SkMin32(nVals, 5)*sizeof(int));
+
             dst += 5;
             nVals -= 5;
             startBit = endBlockBit;
@@ -806,7 +810,11 @@ static bool decode_integer_sequence(
                 endBlockBit = endBit;
             }
 
-            decode_quint_block(dst, nBits, read_astc_bits(src, startBit, endBlockBit));
+            // Quint blocks are three values large
+            int quints[3];
+            decode_quint_block(quints, nBits, read_astc_bits(src, startBit, endBlockBit));
+            memcpy(dst, quints, SkMin32(nVals, 3)*sizeof(int));
+
             dst += 3;
             nVals -= 3;
             startBit = endBlockBit;
@@ -1708,7 +1716,8 @@ struct ASTCDecompressionData {
         // The rest of the CEM config will be between the dual plane bit selector
         // and the texel weight grid.
         const int lowCEM = static_cast<int>(read_astc_bits(fBlock, 23, 29));
-        SkASSERT(lastWeight - dualPlaneBitLoc > 31);
+        SkASSERT(lastWeight >= dualPlaneBitLoc);
+        SkASSERT(lastWeight - dualPlaneBitLoc < 31);
         int fullCEM = static_cast<int>(read_astc_bits(fBlock, dualPlaneBitLoc, lastWeight));
 
         // Attach the config at the end of the weight grid to the CEM values
@@ -1991,6 +2000,23 @@ static void decompress_astc_block(uint8_t* dst, int dstRowBytes,
     }
 }
 
+// This is the type passed as the CompressorType argument of the compressed
+// blitter for the ASTC format. The static functions required to be in this
+// struct are documented in SkTextureCompressor_Blitter.h
+struct CompressorASTC {
+    static inline void CompressA8Vertical(uint8_t* dst, const uint8_t* src) {
+        compress_a8_astc_block<GetAlphaTranspose>(&dst, src, 12);
+    }
+
+    static inline void CompressA8Horizontal(uint8_t* dst, const uint8_t* src,
+                                            int srcRowBytes) {
+        compress_a8_astc_block<GetAlpha>(&dst, src, srcRowBytes);
+    }
+
+    static inline void UpdateBlock(uint8_t* dst, const uint8_t* src) {
+    }
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 namespace SkTextureCompressor {
@@ -2011,9 +2037,26 @@ bool CompressA8To12x12ASTC(uint8_t* dst, const uint8_t* src,
     return true;
 }
 
-SkBlitter* CreateASTCBlitter(int width, int height, void* outputBuffer) {
-    return new
-        SkTCompressedAlphaBlitter<12, 16, CompressA8ASTCBlockVertical>
+SkBlitter* CreateASTCBlitter(int width, int height, void* outputBuffer,
+                             SkTBlitterAllocator* allocator) {
+    if ((width % 12) != 0 || (height % 12) != 0) {
+        return NULL;
+    }
+
+    // Memset the output buffer to an encoding that decodes to zero. We must do this
+    // in order to avoid having uninitialized values in the buffer if the blitter
+    // decides not to write certain scanlines (and skip entire rows of blocks).
+    // In the case of ASTC, if everything index is zero, then the interpolated value
+    // will decode to zero provided we have the right header. We use the encoding
+    // from recognizing all zero blocks from above.
+    const int nBlocks = (width * height / 144);
+    uint8_t *dst = reinterpret_cast<uint8_t *>(outputBuffer);
+    for (int i = 0; i < nBlocks; ++i) {
+        send_packing(&dst, SkTEndian_SwapLE64(0x0000000001FE000173ULL), 0);
+    }
+
+    return allocator->createT<
+        SkTCompressedAlphaBlitter<12, 16, CompressorASTC>, int, int, void* >
         (width, height, outputBuffer);
 }
 

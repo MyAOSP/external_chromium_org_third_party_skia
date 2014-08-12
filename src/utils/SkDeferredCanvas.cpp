@@ -899,8 +899,9 @@ void SkDeferredCanvas::onDrawTextOnPath(const void* text, size_t byteLength, con
     this->recordedDrawCommand();
 }
 
-void SkDeferredCanvas::onDrawPicture(const SkPicture* picture) {
-    this->drawingCanvas()->drawPicture(picture);
+void SkDeferredCanvas::onDrawPicture(const SkPicture* picture, const SkMatrix* matrix,
+                                     const SkPaint* paint) {
+    this->drawingCanvas()->drawPicture(picture, matrix, paint);
     this->recordedDrawCommand();
 }
 
@@ -917,7 +918,9 @@ void SkDeferredCanvas::drawVertices(VertexMode vmode, int vertexCount,
 }
 
 void SkDeferredCanvas::drawPatch(const SkPatch& patch, const SkPaint& paint) {
-    //TODO
+    AutoImmediateDrawIfNeeded autoDraw(*this, &paint);
+    this->drawingCanvas()->drawPatch(patch, paint);
+    this->recordedDrawCommand();
 }
 
 SkDrawFilter* SkDeferredCanvas::setDrawFilter(SkDrawFilter* filter) {

@@ -13,23 +13,42 @@
 
 namespace SkTextureCompressor {
 
-// The function used to compress an A8 block. This function is expected to be
-// used as a template argument to SkCompressedAlphaBlitter. The layout of the
-// block is also expected to be in column-major order.
-typedef void (*CompressA8Proc)(uint8_t* dst, const uint8_t block[]);
-
 // This class implements a blitter that blits directly into a buffer that will
 // be used as an compressed alpha texture. We compute this buffer by
 // buffering scan lines and then outputting them all at once. The number of
 // scan lines buffered is controlled by kBlockSize
-template<int BlockDim, int EncodedBlockSize, CompressA8Proc CompressionProc>
+//
+// The CompressorType is a struct with a bunch of static methods that provides
+// the specialized compression functionality of the blitter. A complete CompressorType
+// will implement the following static functions;
+//
+// struct CompressorType {
+//     // The function used to compress an A8 block. The layout of the
+//     // block is also expected to be in column-major order.
+//     static void CompressA8Vertical(uint8_t* dst, const uint8_t block[]);
+//
+//     // The function used to compress an A8 block. The layout of the
+//     // block is also expected to be in row-major order.
+//     static void CompressA8Horizontal(uint8_t* dst, const uint8_t block[]);
+//
+//     // The function used to update an already compressed block. This will
+//     // most likely be implementation dependent.
+//     static void UpdateBlock(uint8_t* dst, const uint8_t* src);
+// };
+//
+template<int BlockDim, int EncodedBlockSize, typename CompressorType>
 class SkTCompressedAlphaBlitter : public SkBlitter {
 public:
     SkTCompressedAlphaBlitter(int width, int height, void *compressedBuffer)
         // 0x7FFE is one minus the largest positive 16-bit int. We use it for
         // debugging to make sure that we're properly setting the nextX distance
         // in flushRuns(). 
-        : kLongestRun(0x7FFE), kZeroAlpha(0)
+#ifdef SK_DEBUG
+        : fBlitMaskCalled(false),
+#else
+        :
+#endif
+        kLongestRun(0x7FFE), kZeroAlpha(0)
         , fNextRun(0)
         , fWidth(width)
         , fHeight(height)
@@ -141,17 +160,72 @@ public:
         SkFAIL("Not implemented!");
     }
 
-    // Blit a pattern of pixels defined by a rectangle-clipped mask;
-    // typically used for text.
-    virtual void blitMask(const SkMask&, const SkIRect& clip) SK_OVERRIDE {
-        // This function is currently not implemented. It is not explicitly
-        // required by the contract, but if at some time a code path runs into
-        // this function (which is entirely possible), it needs to be implemented.
-        //
-        // TODO (krajcevski):
-        // This function will be most easily implemented in the same way as
-        // blitAntiRect above.
-        SkFAIL("Not implemented!");
+    // Blit a pattern of pixels defined by a rectangle-clipped mask; We make an
+    // assumption here that if this function gets called, then it will replace all
+    // of the compressed texture blocks that it touches. Hence, two separate calls
+    // to blitMask that have clips next to one another will cause artifacts. Most
+    // of the time, however, this function gets called because constructing the mask
+    // was faster than constructing the RLE for blitAntiH, and this function will
+    // only be called once.
+#ifdef SK_DEBUG
+    bool fBlitMaskCalled;
+#endif
+    virtual void blitMask(const SkMask& mask, const SkIRect& clip) SK_OVERRIDE {
+
+        // Assumptions:
+        SkASSERT(!fBlitMaskCalled && (fBlitMaskCalled = true));
+        SkASSERT(SkMask::kA8_Format == mask.fFormat);
+        SkASSERT(mask.fBounds.contains(clip));
+
+        // Start from largest block boundary less than the clip boundaries.
+        const int startI = BlockDim * (clip.left() / BlockDim);
+        const int startJ = BlockDim * (clip.top() / BlockDim);
+
+        for (int j = startJ; j < clip.bottom(); j += BlockDim) {
+
+            // Get the destination for this block row
+            uint8_t* dst = this->getBlock(startI, j);
+            for (int i = startI; i < clip.right(); i += BlockDim) {
+
+                // At this point, the block should intersect the clip.
+                SkASSERT(SkIRect::IntersectsNoEmptyCheck(
+                             SkIRect::MakeXYWH(i, j, BlockDim, BlockDim), clip));
+
+                // Do we need to pad it?
+                if (i < clip.left() || j < clip.top() ||
+                    i + BlockDim > clip.right() || j + BlockDim > clip.bottom()) {
+
+                    uint8_t block[BlockDim*BlockDim];
+                    memset(block, 0, sizeof(block));
+
+                    const int startX = SkMax32(i, clip.left());
+                    const int startY = SkMax32(j, clip.top());
+
+                    const int endX = SkMin32(i + BlockDim, clip.right());
+                    const int endY = SkMin32(j + BlockDim, clip.bottom());
+
+                    for (int y = startY; y < endY; ++y) {
+                        const int col = startX - i;
+                        const int row = y - j;
+                        const int valsWide = endX - startX;
+                        SkASSERT(valsWide <= BlockDim);
+                        SkASSERT(0 <= col && col < BlockDim);
+                        SkASSERT(0 <= row && row < BlockDim);
+                        memcpy(block + row*BlockDim + col,
+                               mask.getAddr8(startX, j + row), valsWide);
+                    }
+
+                    CompressorType::CompressA8Horizontal(dst, block, BlockDim);
+                } else {
+                    // Otherwise, just compress it.
+                    uint8_t*const src = mask.getAddr8(i, j);
+                    const uint32_t rb = mask.fRowBytes;
+                    CompressorType::CompressA8Horizontal(dst, src, rb);
+                }
+
+                dst += EncodedBlockSize;
+            }
+        }
     }
 
     // If the blitter just sets a single value for each pixel, return the
@@ -339,7 +413,7 @@ private:
                 this->updateBlockColumns(block, col, colsLeft, curAlphaColumn);
 
                 // Write this block
-                CompressionProc(outPtr, reinterpret_cast<uint8_t*>(block));
+                CompressorType::CompressA8Vertical(outPtr, reinterpret_cast<uint8_t*>(block));
                 outPtr += EncodedBlockSize;
                 curX += colsLeft;
             }
@@ -355,7 +429,7 @@ private:
 
                 // While we can keep advancing, just keep writing the block.
                 uint8_t lastBlock[EncodedBlockSize];
-                CompressionProc(lastBlock, reinterpret_cast<uint8_t*>(block));
+                CompressorType::CompressA8Vertical(lastBlock, reinterpret_cast<uint8_t*>(block));
                 while((finalX - curX) >= BlockDim) {
                     memcpy(outPtr, lastBlock, EncodedBlockSize);
                     outPtr += EncodedBlockSize;
@@ -392,8 +466,19 @@ private:
         }
 
         // If we didn't land on a block boundary, output the block...
-        if ((curX % BlockDim) > 1) {
-            CompressionProc(outPtr, reinterpret_cast<uint8_t*>(block));
+        if ((curX % BlockDim) > 0) {
+#ifdef SK_DEBUG
+            for (int i = 0; i < BlockDim; ++i) {
+                SkASSERT(nextX[i] == kLongestRun || nextX[i] == curX);
+            }
+#endif
+            const int col = curX % BlockDim;
+            const int colsLeft = BlockDim - col;
+
+            memset(curAlphaColumn, 0, sizeof(curAlphaColumn));
+            this->updateBlockColumns(block, col, colsLeft, curAlphaColumn);
+
+            CompressorType::CompressA8Vertical(outPtr, reinterpret_cast<uint8_t*>(block));
         }
 
         fNextRun = 0;

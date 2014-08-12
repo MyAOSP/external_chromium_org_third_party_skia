@@ -7,6 +7,7 @@
 
 
 #include "SkCanvas.h"
+#include "SkCanvasPriv.h"
 #include "SkBitmapDevice.h"
 #include "SkDeviceImageFilterProxy.h"
 #include "SkDraw.h"
@@ -1134,7 +1135,7 @@ void SkCanvas::internalDrawDevice(SkBaseDevice* srcDev, int x, int y,
             SkMatrix matrix = *iter.fMatrix;
             matrix.postTranslate(SkIntToScalar(-pos.x()), SkIntToScalar(-pos.y()));
             SkIRect clipBounds = SkIRect::MakeWH(srcDev->width(), srcDev->height());
-            SkAutoTUnref<SkImageFilter::UniqueIDCache> cache(dstDev->getImageFilterCache());
+            SkAutoTUnref<SkImageFilter::Cache> cache(dstDev->getImageFilterCache());
             SkImageFilter::Context ctx(matrix, clipBounds, cache.get());
             if (filter->filterImage(&proxy, src, ctx, &dst, &offset)) {
                 SkPaint tmpUnfiltered(*paint);
@@ -1174,7 +1175,7 @@ void SkCanvas::drawSprite(const SkBitmap& bitmap, int x, int y,
             SkMatrix matrix = *iter.fMatrix;
             matrix.postTranslate(SkIntToScalar(-pos.x()), SkIntToScalar(-pos.y()));
             SkIRect clipBounds = SkIRect::MakeWH(bitmap.width(), bitmap.height());
-            SkAutoTUnref<SkImageFilter::UniqueIDCache> cache(iter.fDevice->getImageFilterCache());
+            SkAutoTUnref<SkImageFilter::Cache> cache(iter.fDevice->getImageFilterCache());
             SkImageFilter::Context ctx(matrix, clipBounds, cache.get());
             if (filter->filterImage(&proxy, bitmap, ctx, &dst, &offset)) {
                 SkPaint tmpUnfiltered(*paint);
@@ -2258,7 +2259,7 @@ void SkCanvas::drawPatch(const SkPatch& patch, const SkPaint& paint) {
     // Since a patch is always within the convex hull of the control points, we discard it when its
     // bounding rectangle is completely outside the current clip.
     SkRect bounds;
-    bounds.set(patch.getControlPoints(), 12);
+    bounds.set(patch.getControlPoints(), SkPatch::kNumCtrlPts);
     if (this->quickReject(bounds)) {
         return;
     }
@@ -2397,21 +2398,31 @@ void SkCanvas::EXPERIMENTAL_optimize(const SkPicture* picture) {
 
 void SkCanvas::drawPicture(const SkPicture* picture) {
     if (NULL != picture) {
-        this->onDrawPicture(picture);
+        this->onDrawPicture(picture, NULL, NULL);
     }
 }
 
-void SkCanvas::onDrawPicture(const SkPicture* picture) {
-    SkASSERT(NULL != picture);
+void SkCanvas::drawPicture(const SkPicture* picture, const SkMatrix* matrix, const SkPaint* paint) {
+    if (NULL != picture) {
+        if (matrix && matrix->isIdentity()) {
+            matrix = NULL;
+        }
+        this->onDrawPicture(picture, matrix, paint);
+    }
+}
 
+void SkCanvas::onDrawPicture(const SkPicture* picture, const SkMatrix* matrix,
+                             const SkPaint* paint) {
     SkBaseDevice* device = this->getTopDevice();
     if (NULL != device) {
         // Canvas has to first give the device the opportunity to render
         // the picture itself.
-        if (device->EXPERIMENTAL_drawPicture(this, picture)) {
+        if (device->EXPERIMENTAL_drawPicture(this, picture, matrix, paint)) {
             return; // the device has rendered the entire picture
         }
     }
+
+    SkAutoCanvasMatrixPaint acmp(this, matrix, paint, picture->width(), picture->height());
 
     picture->draw(this);
 }
@@ -2510,4 +2521,30 @@ SkCanvas* SkCanvas::NewRasterDirect(const SkImageInfo& info, void* pixels, size_
         return NULL;
     }
     return SkNEW_ARGS(SkCanvas, (bitmap));
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
+SkAutoCanvasMatrixPaint::SkAutoCanvasMatrixPaint(SkCanvas* canvas, const SkMatrix* matrix,
+                                                 const SkPaint* paint, int width, int height)
+    : fCanvas(canvas)
+    , fSaveCount(canvas->getSaveCount())
+{
+    if (NULL != paint) {
+        SkRect bounds = SkRect::MakeWH(SkIntToScalar(width), SkIntToScalar(height));
+        if (matrix) {
+            matrix->mapRect(&bounds);
+        }
+        canvas->saveLayer(&bounds, paint);
+    } else if (NULL != matrix) {
+        canvas->save();
+    }
+    
+    if (NULL != matrix) {
+        canvas->concat(*matrix);
+    }
+}
+
+SkAutoCanvasMatrixPaint::~SkAutoCanvasMatrixPaint() {
+    fCanvas->restoreToCount(fSaveCount);
 }
