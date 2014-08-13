@@ -27,6 +27,7 @@ void SkRecordDraw(const SkRecord& record,
         SkASSERT(ops.count() == SkToInt(record.count()));
 
         // FIXME: QuadTree doesn't send these back in the order we inserted them.  :(
+        // Also remove the sort in SkPictureData::getActiveOps()?
         if (ops.count() > 0) {
             SkTQSort(ops.begin(), ops.end() - 1, SkTCompareLT<void*>());
         }
@@ -83,7 +84,7 @@ DRAW(DrawDRRect, drawDRRect(r.outer, r.inner, r.paint));
 DRAW(DrawOval, drawOval(r.oval, r.paint));
 DRAW(DrawPaint, drawPaint(r.paint));
 DRAW(DrawPath, drawPath(r.path, r.paint));
-DRAW(DrawPatch, drawPatch(r.patch, r.paint));
+DRAW(DrawPatch, drawPatch(r.cubics, r.colors, r.texCoords, r.xmode.get(), r.paint));
 DRAW(DrawPicture, drawPicture(r.picture, r.matrix, r.paint));
 DRAW(DrawPoints, drawPoints(r.mode, r.count, r.pts, r.paint));
 DRAW(DrawPosText, drawPosText(r.text, r.byteLength, r.pos, r.paint));

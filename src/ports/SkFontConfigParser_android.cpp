@@ -16,7 +16,14 @@
 
 #include <limits>
 
-#define SYSTEM_FONTS_FILE "/system/etc/system_fonts.xml"
+
+
+// From Android version LMP onwards, all font files collapse into
+// /system/fonts/fonts.xml. Instead of trying to detect which version
+// we're on, try to open fonts.xml; if that fails, fall back to the
+// older filename.
+#define LMP_SYSTEM_FONTS_FILE "/system/etc/fonts.xml"
+#define OLD_SYSTEM_FONTS_FILE "/system/etc/system_fonts.xml"
 #define FALLBACK_FONTS_FILE "/system/etc/fallback_fonts.xml"
 #define VENDOR_FONTS_FILE "/vendor/etc/fallback_fonts.xml"
 
@@ -92,7 +99,8 @@ void familyElementHandler(FontFamily* family, const char** attributes) {
         size_t nameLen = strlen(name);
         size_t valueLen = strlen(value);
         if (nameLen == 4 && !strncmp("name", name, nameLen)) {
-            family->fNames.push_back().set(value);
+            SkAutoAsciiToLC tolc(value);
+            family->fNames.push_back().set(tolc.lc());
         } else if (nameLen == 4 && !strncmp("lang", name, nameLen)) {
             family->fLanguage = SkLanguage (value);
         } else if (nameLen == 7 && !strncmp("variant", name, nameLen)) {
@@ -168,7 +176,8 @@ void aliasElementHandler(FamilyData* familyData, const char** attributes) {
         const char* value = attributes[i+1];
         size_t nameLen = strlen(name);
         if (nameLen == 4 && !strncmp("name", name, nameLen)) {
-            aliasName.set(value);
+            SkAutoAsciiToLC tolc(value);
+            aliasName.set(tolc.lc());
         } else if (nameLen == 2 && !strncmp("to", name, nameLen)) {
             to.set(value);
         } else if (nameLen == 6 && !strncmp("weight", name, nameLen)) {
@@ -453,7 +462,11 @@ static void parseConfigFile(const char* filename, SkTDArray<FontFamily*> &famili
 }
 
 static void getSystemFontFamilies(SkTDArray<FontFamily*> &fontFamilies) {
-    parseConfigFile(SYSTEM_FONTS_FILE, fontFamilies);
+    parseConfigFile(LMP_SYSTEM_FONTS_FILE, fontFamilies);
+
+    if (0 == fontFamilies.count()) {
+        parseConfigFile(OLD_SYSTEM_FONTS_FILE, fontFamilies);
+    }
 }
 
 /**

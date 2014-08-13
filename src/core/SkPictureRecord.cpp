@@ -6,12 +6,13 @@
  */
 
 #include "SkPictureRecord.h"
-#include "SkTSearch.h"
-#include "SkPixelRef.h"
-#include "SkRRect.h"
 #include "SkBBoxHierarchy.h"
 #include "SkDevice.h"
+#include "SkPatchUtils.h"
 #include "SkPictureStateTree.h"
+#include "SkPixelRef.h"
+#include "SkRRect.h"
+#include "SkTSearch.h"
 
 #define HEAP_BLOCK_SIZE 4096
 
@@ -67,7 +68,7 @@ SkPictureRecord::~SkPictureRecord() {
 // this method)
 static inline size_t getPaintOffset(DrawType op, size_t opSize) {
     // These offsets are where the paint would be if the op size doesn't overflow
-    static const uint8_t gPaintOffsets[LAST_DRAWTYPE_ENUM + 1] = {
+    static const uint8_t gPaintOffsets[] = {
         0,  // UNUSED - no paint
         0,  // CLIP_PATH - no paint
         0,  // CLIP_REGION - no paint
@@ -112,6 +113,7 @@ static inline size_t getPaintOffset(DrawType op, size_t opSize) {
         0,  // PUSH_CULL - no paint
         0,  // POP_CULL - no paint
         1,  // DRAW_PATCH - right after op code
+        1,  // DRAW_PICTURE_MATRIX_PAINT - right after op code
     };
 
     SK_COMPILE_ASSERT(sizeof(gPaintOffsets) == LAST_DRAWTYPE_ENUM + 1,
@@ -151,6 +153,8 @@ void SkPictureRecord::willSave() {
 }
 
 void SkPictureRecord::recordSave() {
+    fContentInfo.onSave();
+
     // op only
     size_t size = kSaveSize;
     size_t initialOffset = this->addDraw(SAVE, &size);
@@ -179,6 +183,8 @@ SkCanvas::SaveLayerStrategy SkPictureRecord::willSaveLayer(const SkRect* bounds,
 
 void SkPictureRecord::recordSaveLayer(const SkRect* bounds, const SkPaint* paint,
                                       SaveFlags flags) {
+    fContentInfo.onSaveLayer();
+
     // op + bool for 'bounds'
     size_t size = 2 * kUInt32Size;
     if (NULL != bounds) {
@@ -508,8 +514,10 @@ enum PictureRecordOptType {
 };
 
 enum PictureRecordOptFlags {
-    kSkipIfBBoxHierarchy_Flag = 0x1,  // Optimization should be skipped if the
-                                      // SkPicture has a bounding box hierarchy.
+    kSkipIfBBoxHierarchy_Flag  = 0x1,  // Optimization should be skipped if the
+                                       // SkPicture has a bounding box hierarchy.
+    kRescindLastSave_Flag      = 0x2,
+    kRescindLastSaveLayer_Flag = 0x4,
 };
 
 struct PictureRecordOpt {
@@ -528,9 +536,10 @@ static const PictureRecordOpt gPictureRecordOpts[] = {
     // SkPictureStateTree, and applying the optimization introduces significant
     // record time overhead because it requires rewinding contents that were
     // recorded into the BBoxHierarchy.
-    { collapse_save_clip_restore, kRewind_OptType, kSkipIfBBoxHierarchy_Flag },
-    { remove_save_layer1,         kCollapseSaveLayer_OptType, 0 },
-    { remove_save_layer2,         kCollapseSaveLayer_OptType, 0 }
+    { collapse_save_clip_restore, kRewind_OptType, 
+                                                kSkipIfBBoxHierarchy_Flag|kRescindLastSave_Flag },
+    { remove_save_layer1,         kCollapseSaveLayer_OptType, kRescindLastSaveLayer_Flag },
+    { remove_save_layer2,         kCollapseSaveLayer_OptType, kRescindLastSaveLayer_Flag }
 };
 
 // This is called after an optimization has been applied to the command stream
@@ -585,6 +594,11 @@ void SkPictureRecord::willRestore() {
                 // Some optimization fired so don't add the RESTORE
                 apply_optimization_to_bbh(gPictureRecordOpts[opt].fType,
                                           fStateTree, fBoundingHierarchy);
+                if (gPictureRecordOpts[opt].fFlags & kRescindLastSave_Flag) {
+                    fContentInfo.rescindLastSave();
+                } else if (gPictureRecordOpts[opt].fFlags & kRescindLastSaveLayer_Flag) {
+                    fContentInfo.rescindLastSaveLayer();
+                } 
                 break;
             }
         }
@@ -601,6 +615,8 @@ void SkPictureRecord::willRestore() {
 }
 
 void SkPictureRecord::recordRestore(bool fillInSkips) {
+    fContentInfo.onRestore();
+
     if (fillInSkips) {
         this->fillRestoreOffsetPlaceholdersForCurrentStackLevel((uint32_t)fWriter.bytesWritten());
     }
@@ -1199,9 +1215,11 @@ void SkPictureRecord::onDrawPicture(const SkPicture* picture, const SkMatrix* ma
         const SkMatrix& m = matrix ? *matrix : SkMatrix::I();
         size += m.writeToMemory(NULL) + kUInt32Size;    // matrix + paint
         initialOffset = this->addDraw(DRAW_PICTURE_MATRIX_PAINT, &size);
-        this->addPicture(picture);
-        this->addMatrix(m);
+        SkASSERT(initialOffset + getPaintOffset(DRAW_PICTURE_MATRIX_PAINT, size)
+                 == fWriter.bytesWritten());
         this->addPaintPtr(paint);
+        this->addMatrix(m);
+        this->addPicture(picture);
     }
     this->validate(initialOffset, size);
 }
@@ -1269,14 +1287,46 @@ void SkPictureRecord::drawVertices(VertexMode vmode, int vertexCount,
     this->validate(initialOffset, size);
 }
 
-void SkPictureRecord::drawPatch(const SkPatch& patch, const SkPaint& paint) {
-    // op + paint index + patch 12 control points + patch 4 colors
-    size_t size = 2 * kUInt32Size + SkPatch::kNumCtrlPts * sizeof(SkPoint) +
-                    SkPatch::kNumColors * sizeof(SkColor);
+void SkPictureRecord::onDrawPatch(const SkPoint cubics[12], const SkColor colors[4],
+                                  const SkPoint texCoords[4], SkXfermode* xmode,
+                                  const SkPaint& paint) {
+    // op + paint index + patch 12 control points + flag + patch 4 colors + 4 texture coordinates
+    size_t size = 2 * kUInt32Size + SkPatchUtils::kNumCtrlPts * sizeof(SkPoint) + kUInt32Size;
+    uint32_t flag = 0;
+    if (NULL != colors) {
+        flag |= DRAW_VERTICES_HAS_COLORS;
+        size += SkPatchUtils::kNumCorners * sizeof(SkColor);
+    }
+    if (NULL != texCoords) {
+        flag |= DRAW_VERTICES_HAS_TEXS;
+        size += SkPatchUtils::kNumCorners * sizeof(SkPoint);
+    }
+    if (NULL != xmode) {
+        SkXfermode::Mode mode;
+        if (xmode->asMode(&mode) && SkXfermode::kModulate_Mode != mode) {
+            flag |= DRAW_VERTICES_HAS_XFER;
+            size += kUInt32Size;
+        }
+    }
+    
     size_t initialOffset = this->addDraw(DRAW_PATCH, &size);
     SkASSERT(initialOffset+getPaintOffset(DRAW_PATCH, size) == fWriter.bytesWritten());
     this->addPaint(paint);
-    this->addPatch(patch);
+    this->addPatch(cubics);
+    this->addInt(flag);
+    
+    // write optional parameters
+    if (NULL != colors) {
+        fWriter.write(colors, SkPatchUtils::kNumCorners * sizeof(SkColor));
+    }
+    if (NULL != texCoords) {
+        fWriter.write(texCoords, SkPatchUtils::kNumCorners * sizeof(SkPoint));
+    }
+    if (flag & DRAW_VERTICES_HAS_XFER) {
+        SkXfermode::Mode mode = SkXfermode::kModulate_Mode;
+        xmode->asMode(&mode);
+        this->addInt(mode);
+    }
     this->validate(initialOffset, size);
 }
 
@@ -1406,8 +1456,8 @@ void SkPictureRecord::addPath(const SkPath& path) {
     this->addInt(this->addPathToHeap(path));
 }
 
-void SkPictureRecord::addPatch(const SkPatch& patch) {
-    fWriter.writePatch(patch);
+void SkPictureRecord::addPatch(const SkPoint cubics[12]) {
+    fWriter.write(cubics, SkPatchUtils::kNumCtrlPts * sizeof(SkPoint));
 }
 
 void SkPictureRecord::addPicture(const SkPicture* picture) {
