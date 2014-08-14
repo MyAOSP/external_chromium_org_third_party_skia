@@ -33,9 +33,6 @@
 ## epoger will rebaseline by 25 Dec 2013
 #gradtext
 
-#joshualitt
-matrixconvolution
-
 #bsalomon: https://codereview.chromium.org/466873002/
 thinstrokedrects
 thinrects
@@ -50,4 +47,16 @@ gradients
 gradients_2pt_conical_edge
 gradients_2pt_conical_outside
 gradients_no_texture
+clamped_gradients
+srcmode
+complexclip2_rect_aa
+bigblurs
+simpleaaclip_rect
+aarectmoes
+bigmatrix
+mixed_xfermodes
+aaclip
+circles
+shadows
+varied_text_clipped_no_lcd
 
