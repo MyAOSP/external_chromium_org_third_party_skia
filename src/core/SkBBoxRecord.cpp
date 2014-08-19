@@ -7,6 +7,7 @@
  */
 
 #include "SkBBoxRecord.h"
+#include "SkPatchUtils.h"
 
 SkBBoxRecord::~SkBBoxRecord() {
     fSaveStack.deleteAll();
@@ -284,10 +285,27 @@ void SkBBoxRecord::drawVertices(VertexMode mode, int vertexCount,
     }
 }
 
-void SkBBoxRecord::onDrawPicture(const SkPicture* picture) {
-    if (picture->width() > 0 && picture->height() > 0 &&
-        this->transformBounds(SkRect::MakeWH(picture->width(), picture->height()), NULL)) {
-        this->INHERITED::onDrawPicture(picture);
+void SkBBoxRecord::onDrawPatch(const SkPoint cubics[12], const SkColor colors[4],
+                               const SkPoint texCoords[4], SkXfermode* xmode,
+                               const SkPaint& paint) {
+    SkRect bbox;
+    bbox.set(cubics, SkPatchUtils::kNumCtrlPts);
+    if (this->transformBounds(bbox, &paint)) {
+        INHERITED::onDrawPatch(cubics, colors, texCoords, xmode, paint);
+    }
+}
+
+void SkBBoxRecord::onDrawPicture(const SkPicture* picture, const SkMatrix* matrix,
+                                 const SkPaint* paint) {
+    SkRect bounds = SkRect::MakeWH(SkIntToScalar(picture->width()),
+                                   SkIntToScalar(picture->height()));
+    // todo: wonder if we should allow passing an optional matrix to transformBounds so we don't
+    // end up transforming the rect twice.
+    if (matrix) {
+        matrix->mapRect(&bounds);
+    }
+    if (this->transformBounds(bounds, paint)) {
+        this->INHERITED::onDrawPicture(picture, matrix, paint);
     }
 }
 

@@ -16,6 +16,7 @@ were generated from GMs or SKPs), and rename it accordingly.
 import logging
 import os
 import shutil
+import subprocess
 import tempfile
 import time
 
@@ -23,6 +24,7 @@ import time
 import fix_pythonpath  # pylint: disable=W0611
 
 # Imports from within Skia
+from py.utils import git_utils
 from py.utils import gs_utils
 from py.utils import url_utils
 import buildbot_globals
@@ -46,6 +48,7 @@ COLUMN__SOURCE_SKP = 'sourceSkpFile'
 COLUMN__TILED_OR_WHOLE = 'tiledOrWhole'
 COLUMN__TILENUM = 'tilenum'
 FREEFORM_COLUMN_IDS = [
+    COLUMN__SOURCE_SKP,
     COLUMN__TILENUM,
 ]
 ORDERED_COLUMN_IDS = [
@@ -61,16 +64,24 @@ REPO_URL_PREFIX = 'repo:'
 REPO_BASEPATH = os.path.abspath(os.path.join(
     os.path.dirname(os.path.abspath(__file__)), os.pardir, os.pardir))
 
+# Which sections within a JSON summary file can contain results.
+ALLOWED_SECTION_NAMES = [
+    gm_json.JSONKEY_ACTUALRESULTS,
+    gm_json.JSONKEY_EXPECTEDRESULTS,
+]
+
 
 class RenderedPicturesComparisons(results.BaseComparisons):
   """Loads results from multiple render_pictures runs into an ImagePairSet.
   """
 
-  def __init__(self, setA_dirs, setB_dirs, image_diff_db,
-               image_base_gs_url=DEFAULT_IMAGE_BASE_GS_URL,
-               diff_base_url=None, setA_label='setA',
-               setB_label='setB', gs=None,
-               truncate_results=False, prefetch_only=False,
+  def __init__(self,
+               setA_dirs, setB_dirs,
+               setA_section, setB_section,
+               image_diff_db,
+               image_base_gs_url=DEFAULT_IMAGE_BASE_GS_URL, diff_base_url=None,
+               setA_label=None, setB_label=None,
+               gs=None, truncate_results=False, prefetch_only=False,
                download_all_images=False):
     """Constructor: downloads images and generates diffs.
 
@@ -86,6 +97,10 @@ class RenderedPicturesComparisons(results.BaseComparisons):
       setB_dirs: list of root directories to copy all JSON summaries from,
           and to use as setB within the comparisons. These directories may be
           gs:// URLs, special "repo:" URLs, or local filepaths.
+      setA_section: which section within setA to examine; must be one of
+          ALLOWED_SECTION_NAMES
+      setB_section: which section within setB to examine; must be one of
+          ALLOWED_SECTION_NAMES
       image_diff_db: ImageDiffDB instance
       image_base_gs_url: "gs://" URL pointing at the Google Storage bucket/dir
           under which all render_pictures result images can
@@ -95,8 +110,10 @@ class RenderedPicturesComparisons(results.BaseComparisons):
       diff_base_url: base URL within which the client should look for diff
           images; if not specified, defaults to a "file:///" URL representation
           of image_diff_db's storage_root
-      setA_label: description to use for results in setA
-      setB_label: description to use for results in setB
+      setA_label: description to use for results in setA; if None, will be
+          set to a reasonable default
+      setB_label: description to use for results in setB; if None, will be
+          set to a reasonable default
       gs: instance of GSUtils object we can use to download summary files
       truncate_results: FOR MANUAL TESTING: if True, truncate the set of images
           we process, to speed up testing.
@@ -115,29 +132,55 @@ class RenderedPicturesComparisons(results.BaseComparisons):
     self._diff_base_url = (
         diff_base_url or
         url_utils.create_filepath_url(image_diff_db.storage_root))
-    self._setA_label = setA_label
-    self._setB_label = setB_label
     self._gs = gs
     self.truncate_results = truncate_results
     self._prefetch_only = prefetch_only
     self._download_all_images = download_all_images
 
+    # If we are comparing two different section types, we can use those
+    # as the default labels for setA and setB.
+    if setA_section != setB_section:
+      self._setA_label = setA_label or setA_section
+      self._setB_label = setB_label or setB_section
+    else:
+      self._setA_label = setA_label or 'setA'
+      self._setB_label = setB_label or 'setB'
+
     tempdir = tempfile.mkdtemp()
     try:
       setA_root = os.path.join(tempdir, 'setA')
       setB_root = os.path.join(tempdir, 'setB')
+      setA_repo_revision = None
+      setB_repo_revision = None
       for source_dir in setA_dirs:
         self._copy_dir_contents(source_dir=source_dir, dest_dir=setA_root)
+        # TODO(stephana): There is a potential race condition here... we copy
+        # the contents out of the source_dir, and THEN we get the commithash
+        # of source_dir.  If source_dir points at a git checkout, and that
+        # checkout is updated (by a different thread/process) during this
+        # operation, then the contents and commithash will be out of sync.
+        setA_repo_revision = self._get_repo_revision(
+            source_dir=source_dir, assert_if_not=setA_repo_revision)
       for source_dir in setB_dirs:
         self._copy_dir_contents(source_dir=source_dir, dest_dir=setB_root)
+        setB_repo_revision = self._get_repo_revision(
+            source_dir=source_dir, assert_if_not=setB_repo_revision)
+
+      self._setA_descriptions = {
+          results.KEY__SET_DESCRIPTIONS__DIR: setA_dirs,
+          results.KEY__SET_DESCRIPTIONS__REPO_REVISION: setA_repo_revision,
+          results.KEY__SET_DESCRIPTIONS__SECTION: setA_section,
+      }
+      self._setB_descriptions = {
+          results.KEY__SET_DESCRIPTIONS__DIR: setB_dirs,
+          results.KEY__SET_DESCRIPTIONS__REPO_REVISION: setB_repo_revision,
+          results.KEY__SET_DESCRIPTIONS__SECTION: setB_section,
+      }
 
       time_start = int(time.time())
-      # TODO(epoger): For now, this assumes that we are always comparing two
-      # sets of actual results, not actuals vs expectations.  Allow the user
-      # to control this.
       self._results = self._load_result_pairs(
-          setA_root=setA_root, setA_section=gm_json.JSONKEY_ACTUALRESULTS,
-          setB_root=setB_root, setB_section=gm_json.JSONKEY_ACTUALRESULTS)
+          setA_root=setA_root, setB_root=setB_root,
+          setA_section=setA_section, setB_section=setB_section)
       if self._results:
         self._timestamp = int(time.time())
         logging.info('Number of download file collisions: %s' %
@@ -147,15 +190,18 @@ class RenderedPicturesComparisons(results.BaseComparisons):
     finally:
       shutil.rmtree(tempdir)
 
-  def _load_result_pairs(self, setA_root, setA_section, setB_root,
-                         setB_section):
+  def _load_result_pairs(self, setA_root, setB_root,
+                         setA_section, setB_section):
     """Loads all JSON image summaries from 2 directory trees and compares them.
+
+    TODO(stephana): This method is only called from within __init__(); it might
+    make more sense to just roll the content of this method into __init__().
 
     Args:
       setA_root: root directory containing JSON summaries of rendering results
+      setB_root: root directory containing JSON summaries of rendering results
       setA_section: which section (gm_json.JSONKEY_ACTUALRESULTS or
           gm_json.JSONKEY_EXPECTEDRESULTS) to load from the summaries in setA
-      setB_root: root directory containing JSON summaries of rendering results
       setB_section: which section (gm_json.JSONKEY_ACTUALRESULTS or
           gm_json.JSONKEY_EXPECTEDRESULTS) to load from the summaries in setB
 
@@ -196,6 +242,9 @@ class RenderedPicturesComparisons(results.BaseComparisons):
             results.KEY__RESULT_TYPE__NOCOMPARISON,
         ])
 
+    logging.info('Starting to add imagepairs to queue.')
+    self._image_diff_db.log_queue_size_if_changed(limit_verbosity=False)
+
     union_dict_paths = sorted(set(setA_dicts.keys() + setB_dicts.keys()))
     num_union_dict_paths = len(union_dict_paths)
     dict_num = 0
@@ -231,20 +280,21 @@ class RenderedPicturesComparisons(results.BaseComparisons):
             source_skp_name=skp_name, tilenum=None))
 
         tiled_images_A = self.get_default(
-            dictA_results, None,
+            dictA_results, [],
             skp_name, gm_json.JSONKEY_SOURCE_TILEDIMAGES)
         tiled_images_B = self.get_default(
-            dictB_results, None,
+            dictB_results, [],
             skp_name, gm_json.JSONKEY_SOURCE_TILEDIMAGES)
-        # TODO(epoger): Report an error if we find tiles for A but not B?
-        if tiled_images_A and tiled_images_B:
-          # TODO(epoger): Report an error if we find a different number of tiles
-          # for A and B?
-          num_tiles = len(tiled_images_A)
+        if tiled_images_A or tiled_images_B:
+          num_tiles_A = len(tiled_images_A)
+          num_tiles_B = len(tiled_images_B)
+          num_tiles = max(num_tiles_A, num_tiles_B)
           for tile_num in range(num_tiles):
             imagepairs_for_this_skp.append(self._create_image_pair(
-                image_dict_A=tiled_images_A[tile_num],
-                image_dict_B=tiled_images_B[tile_num],
+                image_dict_A=(tiled_images_A[tile_num]
+                              if tile_num < num_tiles_A else None),
+                image_dict_B=(tiled_images_B[tile_num]
+                              if tile_num < num_tiles_B else None),
                 source_skp_name=skp_name, tilenum=tile_num))
 
         for one_imagepair in imagepairs_for_this_skp:
@@ -254,6 +304,9 @@ class RenderedPicturesComparisons(results.BaseComparisons):
                 [COLUMN__RESULT_TYPE]
             if result_type != results.KEY__RESULT_TYPE__SUCCEEDED:
               failing_image_pairs.add_image_pair(one_imagepair)
+
+    logging.info('Finished adding imagepairs to queue.')
+    self._image_diff_db.log_queue_size_if_changed(limit_verbosity=False)
 
     if self._prefetch_only:
       return None
@@ -374,3 +427,24 @@ class RenderedPicturesComparisons(results.BaseComparisons):
       shutil.copytree(repo_dir, dest_dir)
     else:
       shutil.copytree(source_dir, dest_dir)
+
+  def _get_repo_revision(self, source_dir, assert_if_not=None):
+    """Get the commit hash of source_dir, IF it refers to a git checkout.
+
+    Args:
+      source_dir: path to source dir (GS URL, local filepath, or a special
+          "repo:" URL type that points at a file within our Skia checkout;
+          only the "repo:" URL type will have a commit hash.
+      assert_if_not: if not None, raise an Exception if source_dir has a
+          commit hash and that hash is not equal to this
+    """
+    if source_dir.lower().startswith(REPO_URL_PREFIX):
+      repo_dir = os.path.join(REPO_BASEPATH, source_dir[len(REPO_URL_PREFIX):])
+      revision = subprocess.check_output(
+          args=[git_utils.GIT, 'rev-parse', 'HEAD'], cwd=repo_dir).strip()
+      if assert_if_not and revision != assert_if_not:
+        raise Exception('found revision %s that did not match %s' % (
+            revision, assert_if_not))
+      return revision
+    else:
+      return None

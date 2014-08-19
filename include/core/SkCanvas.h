@@ -14,7 +14,6 @@
 #include "SkClipStack.h"
 #include "SkPaint.h"
 #include "SkRefCnt.h"
-#include "SkPatch.h"
 #include "SkPath.h"
 #include "SkRegion.h"
 #include "SkXfermode.h"
@@ -973,6 +972,20 @@ public:
     */
     void drawPicture(const SkPicture* picture);
 
+    /**
+     *  Draw the picture into this canvas.
+     *
+     *  If matrix is non-null, apply that matrix to the CTM when drawing this picture. This is
+     *  logically equivalent to
+     *      save/concat/drawPicture/restore
+     *
+     *  If paint is non-null, draw the picture into a temporary buffer, and then apply the paint's
+     *  alpha/colorfilter/imagefilter/xfermode to that buffer as it is drawn to the canvas.
+     *  This is logically equivalent to
+     *      saveLayer(paint)/drawPicture/restore
+     */
+    void drawPicture(const SkPicture*, const SkMatrix* matrix, const SkPaint* paint);
+
     enum VertexMode {
         kTriangles_VertexMode,
         kTriangleStrip_VertexMode,
@@ -1007,8 +1020,22 @@ public:
                               const SkColor colors[], SkXfermode* xmode,
                               const uint16_t indices[], int indexCount,
                               const SkPaint& paint);
-    
-    virtual void drawPatch(const SkPatch& patch, const SkPaint& paint);
+
+    /**
+     Draw a cubic coons patch
+
+     @param cubic specifies the 4 bounding cubic bezier curves of a patch with clockwise order
+                    starting at the top left corner.
+     @param colors specifies the colors for the corners which will be bilerp across the patch,
+                    their order is clockwise starting at the top left corner.
+     @param texCoords specifies the texture coordinates that will be bilerp across the patch,
+                    their order is the same as the colors.
+     @param xmode specifies how are the colors and the textures combined if both of them are
+                    present.
+     @param paint Specifies the shader/texture if present.
+     */
+    void drawPatch(const SkPoint cubics[12], const SkColor colors[4],
+                   const SkPoint texCoords[4], SkXfermode* xmode, const SkPaint& paint);
 
     /** Send a blob of data to the canvas.
         For canvases that draw, this call is effectively a no-op, as the data
@@ -1185,6 +1212,7 @@ protected:
         return kFullLayer_SaveLayerStrategy;
     }
     virtual void willRestore() {}
+    virtual void didRestore() {}
     virtual void didConcat(const SkMatrix&) {}
     virtual void didSetMatrix(const SkMatrix&) {}
 
@@ -1204,6 +1232,9 @@ protected:
                                   const SkPath& path, const SkMatrix* matrix,
                                   const SkPaint& paint);
 
+    virtual void onDrawPatch(const SkPoint cubics[12], const SkColor colors[4],
+                           const SkPoint texCoords[4], SkXfermode* xmode, const SkPaint& paint);
+
     enum ClipEdgeStyle {
         kHard_ClipEdgeStyle,
         kSoft_ClipEdgeStyle
@@ -1216,7 +1247,7 @@ protected:
 
     virtual void onDiscard();
 
-    virtual void onDrawPicture(const SkPicture* picture);
+    virtual void onDrawPicture(const SkPicture*, const SkMatrix*, const SkPaint*);
 
     // Returns the canvas to be used by DrawIter. Default implementation
     // returns this. Subclasses that encapsulate an indirect canvas may

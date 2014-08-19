@@ -46,7 +46,6 @@
 
     '../tests/AAClipTest.cpp',
     '../tests/ARGBImageEncoderTest.cpp',
-    '../tests/AndroidPaintTest.cpp',
     '../tests/AnnotationTest.cpp',
     '../tests/AsADashTest.cpp',
     '../tests/AtomicTest.cpp',
@@ -111,6 +110,7 @@
     '../tests/GrDrawTargetTest.cpp',
     '../tests/GrMemoryPoolTest.cpp',
     '../tests/GrOrderedSetTest.cpp',
+    '../tests/GrGLSLPrettyPrintTest.cpp',
     '../tests/GrRedBlackTreeTest.cpp',
     '../tests/GrSurfaceTest.cpp',
     '../tests/GrTBSearchTest.cpp',

@@ -265,10 +265,11 @@ void SkNWayCanvas::onDrawTextOnPath(const void* text, size_t byteLength, const S
     }
 }
 
-void SkNWayCanvas::onDrawPicture(const SkPicture* picture) {
+void SkNWayCanvas::onDrawPicture(const SkPicture* picture, const SkMatrix* matrix,
+                                 const SkPaint* paint) {
     Iter iter(fList);
     while (iter.next()) {
-        iter->drawPicture(picture);
+        iter->drawPicture(picture, matrix, paint);
     }
 }
 
@@ -281,6 +282,15 @@ void SkNWayCanvas::drawVertices(VertexMode vmode, int vertexCount,
     while (iter.next()) {
         iter->drawVertices(vmode, vertexCount, vertices, texs, colors, xmode,
                            indices, indexCount, paint);
+    }
+}
+
+void SkNWayCanvas::onDrawPatch(const SkPoint cubics[12], const SkColor colors[4],
+                               const SkPoint texCoords[4], SkXfermode* xmode,
+                               const SkPaint& paint) {
+    Iter iter(fList);
+    while (iter.next()) {
+        iter->drawPatch(cubics, colors, texCoords, xmode, paint);
     }
 }
 

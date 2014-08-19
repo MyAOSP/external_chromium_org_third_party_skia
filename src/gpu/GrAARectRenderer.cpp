@@ -255,22 +255,26 @@ GrEffect* GrRectEffect::TestCreate(SkRandom* random,
 ///////////////////////////////////////////////////////////////////////////////
 
 namespace {
-
-extern const GrVertexAttrib gAARectCoverageAttribs[] = {
-    {kVec2f_GrVertexAttribType,  0,               kPosition_GrVertexAttribBinding},
-    {kVec4ub_GrVertexAttribType, sizeof(SkPoint), kCoverage_GrVertexAttribBinding},
+extern const GrVertexAttrib gAARectAttribs[] = {
+    {kVec2f_GrVertexAttribType,  0,                                 kPosition_GrVertexAttribBinding},
+    {kVec4ub_GrVertexAttribType, sizeof(SkPoint),                   kColor_GrVertexAttribBinding},
+    {kVec4ub_GrVertexAttribType, sizeof(SkPoint) + sizeof(SkColor), kCoverage_GrVertexAttribBinding},
 };
 
-extern const GrVertexAttrib gAARectColorAttribs[] = {
-    {kVec2f_GrVertexAttribType,  0,               kPosition_GrVertexAttribBinding},
-    {kVec4ub_GrVertexAttribType, sizeof(SkPoint), kColor_GrVertexAttribBinding},
+// Should the coverage be multiplied into the color attrib or use a separate attrib.
+enum CoverageAttribType {
+    kUseColor_CoverageAttribType,
+    kUseCoverage_CoverageAttribType,
 };
+}
 
-static void set_aa_rect_vertex_attributes(GrDrawState* drawState, bool useCoverage) {
-    if (useCoverage) {
-        drawState->setVertexAttribs<gAARectCoverageAttribs>(SK_ARRAY_COUNT(gAARectCoverageAttribs));
+static CoverageAttribType set_rect_attribs(GrDrawState* drawState) {
+    if (drawState->canTweakAlphaForCoverage()) {
+        drawState->setVertexAttribs<gAARectAttribs>(2);
+        return kUseColor_CoverageAttribType;
     } else {
-        drawState->setVertexAttribs<gAARectColorAttribs>(SK_ARRAY_COUNT(gAARectColorAttribs));
+        drawState->setVertexAttribs<gAARectAttribs>(3);
+        return kUseCoverage_CoverageAttribType;
     }
 }
 
@@ -279,8 +283,6 @@ static void set_inset_fan(SkPoint* pts, size_t stride,
     pts->setRectFan(r.fLeft + dx, r.fTop + dy,
                     r.fRight - dx, r.fBottom - dy, stride);
 }
-
-};
 
 void GrAARectRenderer::reset() {
     SkSafeSetNull(fAAFillRectIndexBuffer);
@@ -451,11 +453,15 @@ void GrAARectRenderer::geometryFillAARect(GrGpu* gpu,
                                           GrDrawTarget* target,
                                           const SkRect& rect,
                                           const SkMatrix& combinedMatrix,
-                                          const SkRect& devRect,
-                                          bool useVertexCoverage) {
+                                          const SkRect& devRect) {
     GrDrawState* drawState = target->drawState();
 
-    set_aa_rect_vertex_attributes(drawState, useVertexCoverage);
+    GrColor color = drawState->getColor();
+
+    CoverageAttribType covAttribType = set_rect_attribs(drawState);
+    if (kUseCoverage_CoverageAttribType == covAttribType && GrColorIsOpaque(color)) {
+        drawState->setHint(GrDrawState::kVertexColorsAreOpaque_Hint, true);
+    }
 
     GrDrawTarget::AutoReleaseGeometry geo(target, 8, 0);
     if (!geo.succeeded()) {
@@ -471,7 +477,6 @@ void GrAARectRenderer::geometryFillAARect(GrGpu* gpu,
 
     intptr_t verts = reinterpret_cast<intptr_t>(geo.vertices());
     size_t vsize = drawState->getVertexSize();
-    SkASSERT(sizeof(SkPoint) + sizeof(GrColor) == vsize);
 
     SkPoint* fan0Pos = reinterpret_cast<SkPoint*>(verts);
     SkPoint* fan1Pos = reinterpret_cast<SkPoint*>(verts + 4 * vsize);
@@ -528,9 +533,15 @@ void GrAARectRenderer::geometryFillAARect(GrGpu* gpu,
         *((SkPoint*)((intptr_t)fan0Pos + 3 * vsize)) += vec[0] - vec[1];
     }
 
+    // Make verts point to vertex color and then set all the color and coverage vertex attrs values.
     verts += sizeof(SkPoint);
     for (int i = 0; i < 4; ++i) {
-        *reinterpret_cast<GrColor*>(verts + i * vsize) = 0;
+        if (kUseCoverage_CoverageAttribType == covAttribType) {
+            *reinterpret_cast<GrColor*>(verts + i * vsize) = color;
+            *reinterpret_cast<GrColor*>(verts + i * vsize + sizeof(GrColor)) = 0;
+        } else {
+            *reinterpret_cast<GrColor*>(verts + i * vsize) = 0;
+        }
     }
 
     int scale;
@@ -541,20 +552,20 @@ void GrAARectRenderer::geometryFillAARect(GrGpu* gpu,
         scale = 0xff;
     }
 
-    GrColor innerColor;
-    if (useVertexCoverage) {
-        innerColor = GrColorPackRGBA(scale, scale, scale, scale);
+    GrColor innerCoverage;
+    if (kUseCoverage_CoverageAttribType == covAttribType) {
+        innerCoverage = GrColorPackRGBA(scale, scale, scale, scale); 
     } else {
-        if (0xff == scale) {
-            innerColor = target->getDrawState().getColor();
-        } else {
-            innerColor = SkAlphaMulQ(target->getDrawState().getColor(), scale);
-        }
+        innerCoverage = (0xff == scale) ? color : SkAlphaMulQ(color, scale);
     }
-
     verts += 4 * vsize;
     for (int i = 0; i < 4; ++i) {
-        *reinterpret_cast<GrColor*>(verts + i * vsize) = innerColor;
+        if (kUseCoverage_CoverageAttribType == covAttribType) {
+            *reinterpret_cast<GrColor*>(verts + i * vsize) = color;
+            *reinterpret_cast<GrColor*>(verts + i * vsize + sizeof(GrColor)) = innerCoverage;
+        } else {
+            *reinterpret_cast<GrColor*>(verts + i * vsize) = innerCoverage;
+        }
     }
 
     target->setIndexSourceToBuffer(indexBuffer);
@@ -723,8 +734,7 @@ void GrAARectRenderer::strokeAARect(GrGpu* gpu,
                                     const SkRect& rect,
                                     const SkMatrix& combinedMatrix,
                                     const SkRect& devRect,
-                                    const SkStrokeRec& stroke,
-                                    bool useVertexCoverage) {
+                                    const SkStrokeRec& stroke) {
     SkVector devStrokeSize;
     SkScalar width = stroke.getWidth();
     if (width > 0) {
@@ -767,8 +777,7 @@ void GrAARectRenderer::strokeAARect(GrGpu* gpu,
     }
 
     if (spare <= 0 && miterStroke) {
-        this->fillAARect(gpu, target, devOutside, SkMatrix::I(),
-                         devOutside, useVertexCoverage);
+        this->fillAARect(gpu, target, devOutside, SkMatrix::I(), devOutside);
         return;
     }
 
@@ -785,8 +794,7 @@ void GrAARectRenderer::strokeAARect(GrGpu* gpu,
         devOutsideAssist.outset(0, ry);
     }
 
-    this->geometryStrokeAARect(gpu, target, devOutside, devOutsideAssist,
-                               devInside, useVertexCoverage, miterStroke);
+    this->geometryStrokeAARect(gpu, target, devOutside, devOutsideAssist, devInside, miterStroke);
 }
 
 void GrAARectRenderer::geometryStrokeAARect(GrGpu* gpu,
@@ -794,11 +802,15 @@ void GrAARectRenderer::geometryStrokeAARect(GrGpu* gpu,
                                             const SkRect& devOutside,
                                             const SkRect& devOutsideAssist,
                                             const SkRect& devInside,
-                                            bool useVertexCoverage,
                                             bool miterStroke) {
     GrDrawState* drawState = target->drawState();
 
-    set_aa_rect_vertex_attributes(drawState, useVertexCoverage);
+    CoverageAttribType covAttribType = set_rect_attribs(drawState);
+
+    GrColor color = drawState->getColor();
+    if (kUseCoverage_CoverageAttribType == covAttribType && GrColorIsOpaque(color)) {
+        drawState->setHint(GrDrawState::kVertexColorsAreOpaque_Hint, true);
+    }
 
     int innerVertexNum = 4;
     int outerVertexNum = miterStroke ? 4 : 8;
@@ -817,7 +829,6 @@ void GrAARectRenderer::geometryStrokeAARect(GrGpu* gpu,
 
     intptr_t verts = reinterpret_cast<intptr_t>(geo.vertices());
     size_t vsize = drawState->getVertexSize();
-    SkASSERT(sizeof(SkPoint) + sizeof(GrColor) == vsize);
 
     // We create vertices for four nested rectangles. There are two ramps from 0 to full
     // coverage, one on the exterior of the stroke and the other on the interior.
@@ -866,12 +877,19 @@ void GrAARectRenderer::geometryStrokeAARect(GrGpu* gpu,
         set_inset_fan(fan3Pos, vsize, devInside,   SK_ScalarHalf,  SK_ScalarHalf);
     }
 
+    // Make verts point to vertex color and then set all the color and coverage vertex attrs values.
     // The outermost rect has 0 coverage
     verts += sizeof(SkPoint);
     for (int i = 0; i < outerVertexNum; ++i) {
-        *reinterpret_cast<GrColor*>(verts + i * vsize) = 0;
+        if (kUseCoverage_CoverageAttribType == covAttribType) {
+            *reinterpret_cast<GrColor*>(verts + i * vsize) = color;
+            *reinterpret_cast<GrColor*>(verts + i * vsize + sizeof(GrColor)) = 0;
+        } else {
+            *reinterpret_cast<GrColor*>(verts + i * vsize) = 0;
+        }
     }
 
+    // scale is the coverage for the the inner two rects.
     int scale;
     if (inset < SK_ScalarHalf) {
         scale = SkScalarFloorToInt(512.0f * inset / (inset + SK_ScalarHalf));
@@ -880,27 +898,32 @@ void GrAARectRenderer::geometryStrokeAARect(GrGpu* gpu,
         scale = 0xff;
     }
 
-    // The inner two rects have full coverage
-    GrColor innerColor;
-    if (useVertexCoverage) {
-        innerColor = GrColorPackRGBA(scale, scale, scale, scale);
+    verts += outerVertexNum * vsize;
+    GrColor innerCoverage;
+    if (kUseCoverage_CoverageAttribType == covAttribType) {
+        innerCoverage = GrColorPackRGBA(scale, scale, scale, scale);
     } else {
-        if (0xff == scale) {
-            innerColor = target->getDrawState().getColor();
-        } else {
-            innerColor = SkAlphaMulQ(target->getDrawState().getColor(), scale);
-        }
+        innerCoverage = (0xff == scale) ? color : SkAlphaMulQ(color, scale);
     }
 
-    verts += outerVertexNum * vsize;
     for (int i = 0; i < outerVertexNum + innerVertexNum; ++i) {
-        *reinterpret_cast<GrColor*>(verts + i * vsize) = innerColor;
+        if (kUseCoverage_CoverageAttribType == covAttribType) {
+            *reinterpret_cast<GrColor*>(verts + i * vsize) = color;
+            *reinterpret_cast<GrColor*>(verts + i * vsize + sizeof(GrColor)) = innerCoverage;
+        } else {
+            *reinterpret_cast<GrColor*>(verts + i * vsize) = innerCoverage;
+        }
     }
 
     // The innermost rect has 0 coverage
     verts += (outerVertexNum + innerVertexNum) * vsize;
     for (int i = 0; i < innerVertexNum; ++i) {
-        *reinterpret_cast<GrColor*>(verts + i * vsize) = 0;
+        if (kUseCoverage_CoverageAttribType == covAttribType) {
+            *reinterpret_cast<GrColor*>(verts + i * vsize) = color;
+            *reinterpret_cast<GrColor*>(verts + i * vsize + sizeof(GrColor)) = 0;
+        } else {
+            *reinterpret_cast<GrColor*>(verts + i * vsize) = 0;
+        }
     }
 
     target->setIndexSourceToBuffer(indexBuffer);
@@ -911,8 +934,7 @@ void GrAARectRenderer::geometryStrokeAARect(GrGpu* gpu,
 void GrAARectRenderer::fillAANestedRects(GrGpu* gpu,
                                          GrDrawTarget* target,
                                          const SkRect rects[2],
-                                         const SkMatrix& combinedMatrix,
-                                         bool useVertexCoverage) {
+                                         const SkMatrix& combinedMatrix) {
     SkASSERT(combinedMatrix.rectStaysRect());
     SkASSERT(!rects[1].isEmpty());
 
@@ -922,10 +944,9 @@ void GrAARectRenderer::fillAANestedRects(GrGpu* gpu,
     combinedMatrix.mapPoints((SkPoint*)&devInside, (const SkPoint*)&rects[1], 2);
 
     if (devInside.isEmpty()) {
-        this->fillAARect(gpu, target, devOutside, SkMatrix::I(), devOutside, useVertexCoverage);
+        this->fillAARect(gpu, target, devOutside, SkMatrix::I(), devOutside);
         return;
     }
 
-    this->geometryStrokeAARect(gpu, target, devOutside, devOutsideAssist,
-                               devInside, useVertexCoverage, true);
+    this->geometryStrokeAARect(gpu, target, devOutside, devOutsideAssist, devInside, true);
 }

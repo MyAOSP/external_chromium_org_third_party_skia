@@ -20,7 +20,6 @@
 class GrContext;
 #endif
 
-class SkBBHFactory;
 class SkBBoxHierarchy;
 class SkCanvas;
 class SkData;
@@ -198,6 +197,13 @@ public:
     // Takes ref on listener.
     void addDeletionListener(DeletionListener* listener) const;
 
+    /** Return the approximate number of operations in this picture.  This
+     *  number may be greater or less than the number of SkCanvas calls
+     *  recorded: some calls may be recorded as more than one operation, or some
+     *  calls may be optimized away.
+     */
+    int approximateOpCount() const;
+
 private:
     // V2 : adds SkPixelRef's generation ID.
     // V3 : PictInfo tag at beginning, and EOF tag at the end
@@ -231,13 +237,14 @@ private:
     // V29: Removed SaveFlags parameter from save().
     // V30: Remove redundant SkMatrix from SkLocalMatrixShader.
     // V31: Add a serialized UniqueID to SkImageFilter.
+    // V32: Removed SkPaintOptionsAndroid from SkPaint
 
     // Note: If the picture version needs to be increased then please follow the
     // steps to generate new SKPs in (only accessible to Googlers): http://goo.gl/qATVcw
 
     // Only SKPs within the min/current picture version range (inclusive) can be read.
     static const uint32_t MIN_PICTURE_VERSION = 19;
-    static const uint32_t CURRENT_PICTURE_VERSION = 31;
+    static const uint32_t CURRENT_PICTURE_VERSION = 32;
 
     mutable uint32_t      fUniqueID;
 
@@ -289,8 +296,11 @@ private:
 
     typedef SkRefCnt INHERITED;
 
-    SkPicture(int width, int height, SkRecord*);  // Takes ownership.
-    SkAutoTDelete<SkRecord> fRecord;
+    // Takes ownership of the SkRecord, refs the (optional) BBH.
+    SkPicture(int width, int height, SkRecord*, SkBBoxHierarchy*);
+
+    SkAutoTDelete<SkRecord>       fRecord;
+    SkAutoTUnref<SkBBoxHierarchy> fBBH;
     bool fRecordWillPlayBackBitmaps; // TODO: const
 };
 

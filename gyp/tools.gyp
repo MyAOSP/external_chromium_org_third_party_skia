@@ -170,10 +170,12 @@
       ],
       'include_dirs': [
         '../src/core/', # needed for SkTLList.h
+        '../tools/',    # needed for picture_utils::replace_char
       ],
       'dependencies': [
         'flags.gyp:flags',
         'skia_lib.gyp:skia_lib',
+        'tools.gyp:picture_utils',
       ],
       'cflags': [
         '-O3',
@@ -517,17 +519,18 @@
       'type': 'executable',
       'sources': [
         '../tools/render_pdfs_main.cpp',
-        '../tools/PdfRenderer.cpp',
-        '../tools/PdfRenderer.h',
       ],
       'include_dirs': [
+        '../src/core',
         '../src/pipe/utils/',
         '../src/utils/',
       ],
       'dependencies': [
+        'flags.gyp:flags',
         'pdf.gyp:pdf',
         'skia_lib.gyp:skia_lib',
         'tools.gyp:picture_utils',
+        'tools.gyp:sk_tool_proc_stats',
       ],
       'conditions': [
         ['skia_win_debuggers_path and skia_os == "win"',
@@ -643,6 +646,17 @@
       'dependencies': [
         'skia_lib.gyp:skia_lib',
       ],
+    },
+    {
+      'target_name': 'sk_tool_proc_stats',
+      'type': 'static_library',
+      'sources': [
+        '../tools/ProcStats.h',
+        '../tools/ProcStats.cpp',
+      ],
+      'direct_dependent_settings': {
+        'include_dirs': [ '../tools', ],
+      },
     },
   ],
   'conditions': [

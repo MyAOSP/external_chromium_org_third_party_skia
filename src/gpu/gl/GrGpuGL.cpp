@@ -7,10 +7,10 @@
 
 
 #include "GrGpuGL.h"
-#include "GrGLNameAllocator.h"
 #include "GrGLStencilBuffer.h"
 #include "GrGLPath.h"
 #include "GrGLPathRange.h"
+#include "GrGLPathRendering.h"
 #include "GrGLShaderBuilder.h"
 #include "GrTemplates.h"
 #include "GrTypes.h"
@@ -164,6 +164,10 @@ GrGpuGL::GrGpuGL(const GrGLContext& ctx, GrContext* context)
 
     fLastSuccessfulStencilFmtIdx = 0;
     fHWProgramID = 0;
+
+    if (this->glCaps().pathRenderingSupport()) {
+        fPathRendering.reset(GrGLPathRendering::Create(glInterface()));
+    }
 }
 
 GrGpuGL::~GrGpuGL() {
@@ -329,7 +333,7 @@ void GrGpuGL::onResetContext(uint32_t resetBits) {
             GL_CALL(MatrixLoadIdentity(GR_GL_MODELVIEW));
 
             for (int i = 0; i < this->glCaps().maxFixedFunctionTextureCoords(); ++i) {
-                GL_CALL(PathTexGen(GR_GL_TEXTURE0 + i, GR_GL_NONE, 0, NULL));
+                fPathRendering->pathTexGen(GR_GL_TEXTURE0 + i, GR_GL_NONE, 0, NULL);
                 fHWPathTexGenSettings[i].fMode = GR_GL_NONE;
                 fHWPathTexGenSettings[i].fNumComponents = 0;
             }
@@ -574,16 +578,14 @@ bool GrGpuGL::uploadTexData(const GrGLTexture::Desc& desc,
     size_t trimRowBytes = width * bpp;
 
     // in case we need a temporary, trimmed copy of the src pixels
-    SkAutoSMalloc<128 * 128> tempStorage;
+    GrAutoMalloc<128 * 128> tempStorage;
 
-    // paletted textures cannot be partially updated
     // We currently lazily create MIPMAPs when the we see a draw with
     // GrTextureParams::kMipMap_FilterMode. Using texture storage requires that the
     // MIP levels are all created when the texture is created. So for now we don't use
     // texture storage.
     bool useTexStorage = false &&
                          isNewTexture &&
-                         kIndex_8_GrPixelConfig != desc.fConfig &&
                          this->glCaps().texStorageSupport();
 
     if (useTexStorage && kGL_GrGLStandard == this->glStandard()) {
@@ -611,11 +613,6 @@ bool GrGpuGL::uploadTexData(const GrGLTexture::Desc& desc,
     }
     if (!this->configToGLFormats(dataConfig, useSizedFormat, &internalFormat,
                                  &externalFormat, &externalType)) {
-        return false;
-    }
-
-    if (!isNewTexture && GR_GL_PALETTE8_RGBA8 == internalFormat) {
-        // paletted textures cannot be updated
         return false;
     }
 
@@ -684,27 +681,14 @@ bool GrGpuGL::uploadTexData(const GrGLTexture::Desc& desc,
                                        internalFormat,
                                        desc.fWidth, desc.fHeight));
         } else {
-            if (GR_GL_PALETTE8_RGBA8 == internalFormat) {
-                GrGLsizei imageSize = desc.fWidth * desc.fHeight +
-                                      kGrColorTableSize;
-                GL_ALLOC_CALL(this->glInterface(),
-                              CompressedTexImage2D(GR_GL_TEXTURE_2D,
-                                                   0, // level
-                                                   internalFormat,
-                                                   desc.fWidth, desc.fHeight,
-                                                   0, // border
-                                                   imageSize,
-                                                   data));
-            } else {
-                GL_ALLOC_CALL(this->glInterface(),
-                              TexImage2D(GR_GL_TEXTURE_2D,
-                                         0, // level
-                                         internalFormat,
-                                         desc.fWidth, desc.fHeight,
-                                         0, // border
-                                         externalFormat, externalType,
-                                         data));
-            }
+            GL_ALLOC_CALL(this->glInterface(),
+                          TexImage2D(GR_GL_TEXTURE_2D,
+                                     0, // level
+                                     internalFormat,
+                                     desc.fWidth, desc.fHeight,
+                                     0, // border
+                                     externalFormat, externalType,
+                                     data));
         }
         GrGLenum error = check_alloc_error(desc, this->glInterface());
         if (error != GR_GL_NO_ERROR) {
@@ -784,10 +768,8 @@ bool GrGpuGL::uploadCompressedTexData(const GrGLTexture::Desc& desc,
         return false;
     }
 
-    bool succeeded = true;
-    CLEAR_ERROR_BEFORE_ALLOC(this->glInterface());
-
     if (isNewTexture) {
+        CLEAR_ERROR_BEFORE_ALLOC(this->glInterface());
         GL_ALLOC_CALL(this->glInterface(),
                       CompressedTexImage2D(GR_GL_TEXTURE_2D,
                                            0, // level
@@ -796,22 +778,25 @@ bool GrGpuGL::uploadCompressedTexData(const GrGLTexture::Desc& desc,
                                            0, // border
                                            dataSize,
                                            data));
+        GrGLenum error = check_alloc_error(desc, this->glInterface());
+        if (error != GR_GL_NO_ERROR) {
+            return false;
+        }
     } else {
-        GL_ALLOC_CALL(this->glInterface(),
-                      CompressedTexSubImage2D(GR_GL_TEXTURE_2D,
-                                              0, // level
-                                              left, top,
-                                              width, height,
-                                              internalFormat,
-                                              dataSize,
-                                              data));
+        // Paletted textures can't be updated.
+        if (GR_GL_PALETTE8_RGBA8 == internalFormat) {
+            return false;
+        }
+        GL_CALL(CompressedTexSubImage2D(GR_GL_TEXTURE_2D,
+                                        0, // level
+                                        left, top,
+                                        width, height,
+                                        internalFormat,
+                                        dataSize,
+                                        data));
     }
 
-    GrGLenum error = check_alloc_error(desc, this->glInterface());
-    if (error != GR_GL_NO_ERROR) {
-        succeeded = false;
-    }
-    return succeeded;
+    return true;
 }
 
 static bool renderbuffer_storage_msaa(GrGLContext& ctx,
@@ -1681,7 +1666,7 @@ bool GrGpuGL::onReadPixels(GrRenderTarget* target,
 
     // determine if GL can read using the passed rowBytes or if we need
     // a scratch buffer.
-    SkAutoSMalloc<32 * sizeof(GrColor)> scratch;
+    GrAutoMalloc<32 * sizeof(GrColor)> scratch;
     if (rowBytes != tightRowBytes) {
         if (this->glCaps().packRowLengthSupport()) {
             SkASSERT(!(rowBytes % sizeof(GrColor)));
@@ -1881,7 +1866,7 @@ void GrGpuGL::onGpuStencilPath(const GrPath* path, SkPath::FillType fill) {
     GrGLenum fillMode =
         gr_stencil_op_to_gl_path_rendering_fill_mode(fHWPathStencilSettings.passOp(GrStencilSettings::kFront_Face));
     GrGLint writeMask = fHWPathStencilSettings.writeMask(GrStencilSettings::kFront_Face);
-    GL_CALL(StencilFillPath(id, fillMode, writeMask));
+    fPathRendering->stencilFillPath(id, fillMode, writeMask);
 }
 
 void GrGpuGL::onGpuDrawPath(const GrPath* path, SkPath::FillType fill) {
@@ -1904,18 +1889,18 @@ void GrGpuGL::onGpuDrawPath(const GrPath* path, SkPath::FillType fill) {
     if (nonInvertedFill == fill) {
         if (stroke.needToApply()) {
             if (SkStrokeRec::kStrokeAndFill_Style == stroke.getStyle()) {
-                GL_CALL(StencilFillPath(id, fillMode, writeMask));
+                fPathRendering->stencilFillPath(id, fillMode, writeMask);
             }
-            GL_CALL(StencilThenCoverStrokePath(id, 0xffff, writeMask, GR_GL_BOUNDING_BOX));
+            fPathRendering->stencilThenCoverStrokePath(id, 0xffff, writeMask, GR_GL_BOUNDING_BOX);
         } else {
-            GL_CALL(StencilThenCoverFillPath(id, fillMode, writeMask, GR_GL_BOUNDING_BOX));
+            fPathRendering->stencilThenCoverFillPath(id, fillMode, writeMask, GR_GL_BOUNDING_BOX);
         }
     } else {
         if (stroke.isFillStyle() || SkStrokeRec::kStrokeAndFill_Style == stroke.getStyle()) {
-            GL_CALL(StencilFillPath(id, fillMode, writeMask));
+            fPathRendering->stencilFillPath(id, fillMode, writeMask);
         }
         if (stroke.needToApply()) {
-            GL_CALL(StencilStrokePath(id, 0xffff, writeMask));
+            fPathRendering->stencilStrokePath(id, 0xffff, writeMask);
         }
 
         GrDrawState* drawState = this->drawState();
@@ -1966,33 +1951,33 @@ void GrGpuGL::onGpuDrawPaths(const GrPathRange* pathRange,
     if (nonInvertedFill == fill) {
         if (stroke.needToApply()) {
             if (SkStrokeRec::kStrokeAndFill_Style == stroke.getStyle()) {
-                GL_CALL(StencilFillPathInstanced(
-                            count, GR_GL_UNSIGNED_INT, indices, baseID, fillMode,
-                            writeMask, gXformType2GLType[transformsType],
-                            transforms));
+                fPathRendering->stencilFillPathInstanced(
+                                    count, GR_GL_UNSIGNED_INT, indices, baseID, fillMode,
+                                    writeMask, gXformType2GLType[transformsType],
+                                    transforms);
             }
-            GL_CALL(StencilThenCoverStrokePathInstanced(
-                        count, GR_GL_UNSIGNED_INT, indices, baseID, 0xffff, writeMask,
-                        GR_GL_BOUNDING_BOX_OF_BOUNDING_BOXES,
-                        gXformType2GLType[transformsType], transforms));
+            fPathRendering->stencilThenCoverStrokePathInstanced(
+                                count, GR_GL_UNSIGNED_INT, indices, baseID, 0xffff, writeMask,
+                                GR_GL_BOUNDING_BOX_OF_BOUNDING_BOXES,
+                                gXformType2GLType[transformsType], transforms);
         } else {
-            GL_CALL(StencilThenCoverFillPathInstanced(
-                        count, GR_GL_UNSIGNED_INT, indices, baseID, fillMode, writeMask,
-                        GR_GL_BOUNDING_BOX_OF_BOUNDING_BOXES,
-                        gXformType2GLType[transformsType], transforms));
+            fPathRendering->stencilThenCoverFillPathInstanced(
+                                count, GR_GL_UNSIGNED_INT, indices, baseID, fillMode, writeMask,
+                                GR_GL_BOUNDING_BOX_OF_BOUNDING_BOXES,
+                                gXformType2GLType[transformsType], transforms);
         }
     } else {
         if (stroke.isFillStyle() || SkStrokeRec::kStrokeAndFill_Style == stroke.getStyle()) {
-            GL_CALL(StencilFillPathInstanced(
-                        count, GR_GL_UNSIGNED_INT, indices, baseID, fillMode,
-                        writeMask, gXformType2GLType[transformsType],
-                        transforms));
+            fPathRendering->stencilFillPathInstanced(
+                                count, GR_GL_UNSIGNED_INT, indices, baseID, fillMode,
+                                writeMask, gXformType2GLType[transformsType],
+                                transforms);
         }
         if (stroke.needToApply()) {
-            GL_CALL(StencilStrokePathInstanced(
-                        count, GR_GL_UNSIGNED_INT, indices, baseID, 0xffff,
-                        writeMask, gXformType2GLType[transformsType],
-                        transforms));
+            fPathRendering->stencilStrokePathInstanced(
+                                count, GR_GL_UNSIGNED_INT, indices, baseID, 0xffff,
+                                writeMask, gXformType2GLType[transformsType],
+                                transforms);
         }
 
         GrDrawState* drawState = this->drawState();
@@ -2210,9 +2195,9 @@ void GrGpuGL::flushPathStencilSettings(SkPath::FillType fill) {
         // that draws the path to the SB (glStencilFillPath)
         GrGLenum func =
             gr_to_gl_stencil_func(pathStencilSettings.func(GrStencilSettings::kFront_Face));
-        GL_CALL(PathStencilFunc(func,
-                                pathStencilSettings.funcRef(GrStencilSettings::kFront_Face),
-                                pathStencilSettings.funcMask(GrStencilSettings::kFront_Face)));
+        fPathRendering->pathStencilFunc(
+                            func, pathStencilSettings.funcRef(GrStencilSettings::kFront_Face),
+                            pathStencilSettings.funcMask(GrStencilSettings::kFront_Face));
 
         fHWPathStencilSettings = pathStencilSettings;
     }
@@ -2403,10 +2388,10 @@ void GrGpuGL::enablePathTexGen(int unitIdx,
     this->setTextureUnit(unitIdx);
 
     fHWPathTexGenSettings[unitIdx].fNumComponents = components;
-    GL_CALL(PathTexGen(GR_GL_TEXTURE0 + unitIdx,
-                       GR_GL_OBJECT_LINEAR,
-                       components,
-                       coefficients));
+    fPathRendering->pathTexGen(GR_GL_TEXTURE0 + unitIdx,
+                               GR_GL_OBJECT_LINEAR,
+                               components,
+                               coefficients);
 
     memcpy(fHWPathTexGenSettings[unitIdx].fCoefficients, coefficients,
            3 * components * sizeof(GrGLfloat));
@@ -2455,7 +2440,7 @@ void GrGpuGL::flushPathTexGenSettings(int numUsedTexCoordSets) {
         SkASSERT(0 != fHWPathTexGenSettings[i].fNumComponents);
 
         this->setTextureUnit(i);
-        GL_CALL(PathTexGen(GR_GL_TEXTURE0 + i, GR_GL_NONE, 0, NULL));
+        fPathRendering->pathTexGen(GR_GL_TEXTURE0 + i, GR_GL_NONE, 0, NULL);
         fHWPathTexGenSettings[i].fNumComponents = 0;
     }
 
@@ -2509,38 +2494,6 @@ void GrGpuGL::flushMiscFixedFunctionState() {
         }
         fHWDrawFace = drawState.getDrawFace();
     }
-}
-
-GrGLuint GrGpuGL::createGLPathObject() {
-    if (NULL == fPathNameAllocator.get()) {
-        static const int range = 65536;
-        GrGLuint firstName;
-        GL_CALL_RET(firstName, GenPaths(range));
-        fPathNameAllocator.reset(SkNEW_ARGS(GrGLNameAllocator, (firstName, firstName + range)));
-    }
-
-    GrGLuint name = fPathNameAllocator->allocateName();
-    if (0 == name) {
-        // Our reserved path names are all in use. Fall back on GenPaths.
-        GL_CALL_RET(name, GenPaths(1));
-    }
-
-    return name;
-}
-
-void GrGpuGL::deleteGLPathObject(GrGLuint name) {
-    if (NULL == fPathNameAllocator.get() ||
-        name < fPathNameAllocator->firstName() ||
-        name >= fPathNameAllocator->endName()) {
-        // If we aren't inside fPathNameAllocator's range then this name was
-        // generated by the GenPaths fallback (or else the name is unallocated).
-        GL_CALL(DeletePaths(name, 1));
-        return;
-    }
-
-    // Make the path empty to save memory, but don't free the name in the driver.
-    GL_CALL(PathCommands(name, 0, NULL, 0, GR_GL_FLOAT, NULL));
-    fPathNameAllocator->free(name);
 }
 
 bool GrGpuGL::configToGLFormats(GrPixelConfig config,
@@ -2616,12 +2569,8 @@ bool GrGpuGL::configToGLFormats(GrPixelConfig config,
             *externalType = GR_GL_UNSIGNED_SHORT_4_4_4_4;
             break;
         case kIndex_8_GrPixelConfig:
-            // glCompressedTexImage doesn't take external params
-            *externalFormat = GR_GL_PALETTE8_RGBA8;
             // no sized/unsized internal format distinction here
             *internalFormat = GR_GL_PALETTE8_RGBA8;
-            // unused with CompressedTexImage
-            *externalType = GR_GL_UNSIGNED_BYTE;
             break;
         case kAlpha_8_GrPixelConfig:
             if (this->glCaps().textureRedSupport()) {
@@ -2750,7 +2699,6 @@ inline bool can_copy_texsubimage(const GrSurface* dst,
     if (gpu->glCaps().isConfigRenderable(src->config(), src->desc().fSampleCnt > 0) &&
         NULL != dst->asTexture() &&
         dst->origin() == src->origin() &&
-        kIndex_8_GrPixelConfig != src->config() &&
         !GrPixelConfigIsCompressed(src->config())) {
         if (NULL != wouldNeedTempFBO) {
             *wouldNeedTempFBO = NULL == src->asRenderTarget();

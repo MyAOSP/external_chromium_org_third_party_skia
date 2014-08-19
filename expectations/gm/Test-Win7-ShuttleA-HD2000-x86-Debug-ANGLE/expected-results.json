@@ -349,6 +349,15 @@
       ], 
       "reviewed-by-human": false
     }, 
+    "astcbitmap_angle.png": {
+      "allowed-digests": [
+        [
+          "bitmap-64bitMD5", 
+          7104155647358997780
+        ]
+      ], 
+      "reviewed-by-human": true
+    }, 
     "bat_angle.png": {
       "allowed-digests": [
         [
@@ -6937,6 +6946,15 @@
       ], 
       "reviewed-by-human": true
     }, 
+    "etc1bitmap_r11.ktx_angle.png": {
+      "allowed-digests": [
+        [
+          "bitmap-64bitMD5", 
+          14073051900873346231
+        ]
+      ], 
+      "reviewed-by-human": true
+    }, 
     "extractbitmap_565.png": {
       "allowed-digests": [
         [
@@ -8909,10 +8927,7 @@
           12213884113784735929
         ]
       ], 
-      "bugs": [
-        1578
-      ], 
-      "reviewed-by-human": false
+      "reviewed-by-human": true
     }, 
     "gradient_dirty_laundry_gpu.png": {
       "allowed-digests": [
@@ -10775,7 +10790,7 @@
       "allowed-digests": [
         [
           "bitmap-64bitMD5", 
-          12761674399065406539
+          3719160171581050213
         ]
       ], 
       "reviewed-by-human": true
@@ -14411,7 +14426,8 @@
           10999541404612369092
         ]
       ], 
-      "ignore-failure": false
+      "ignore-failure": false, 
+      "reviewed-by-human": true
     }, 
     "thinrects_gpu.png": {
       "allowed-digests": [
@@ -14468,7 +14484,8 @@
           6717965895519090324
         ]
       ], 
-      "ignore-failure": false
+      "ignore-failure": false, 
+      "reviewed-by-human": true
     }, 
     "thinstrokedrects_gpu.png": {
       "allowed-digests": [

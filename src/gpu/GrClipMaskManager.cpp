@@ -404,8 +404,7 @@ bool GrClipMaskManager::drawElement(GrTexture* target,
                                                               fGpu,
                                                               element->getRect(),
                                                               SkMatrix::I(),
-                                                              element->getRect(),
-                                                              false);
+                                                              element->getRect());
             } else {
                 fGpu->drawSimpleRect(element->getRect());
             }
@@ -1059,7 +1058,7 @@ GrTexture* GrClipMaskManager::createSoftwareClipMask(int32_t elementsGenID,
     SkMatrix matrix;
     matrix.setTranslate(SkIntToScalar(-clipSpaceIBounds.fLeft),
                         SkIntToScalar(-clipSpaceIBounds.fTop));
-    helper.init(maskSpaceIBounds, &matrix);
+    helper.init(maskSpaceIBounds, &matrix, false);
 
     helper.clear(kAllIn_InitialState == initialState ? 0xFF : 0x00);
 

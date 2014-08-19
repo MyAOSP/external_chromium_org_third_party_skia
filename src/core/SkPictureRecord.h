@@ -10,9 +10,6 @@
 
 #include "SkCanvas.h"
 #include "SkFlattenable.h"
-#ifdef SK_COLLAPSE_MATRIX_CLIP_STATE
-#include "SkMatrixClipStateMgr.h"
-#endif
 #include "SkPathHeap.h"
 #include "SkPicture.h"
 #include "SkPictureData.h"
@@ -119,13 +116,11 @@ private:
     size_t recordRestoreOffsetPlaceholder(SkRegion::Op);
     void fillRestoreOffsetPlaceholdersForCurrentStackLevel(uint32_t restoreOffset);
 
-#ifndef SK_COLLAPSE_MATRIX_CLIP_STATE
     SkTDArray<int32_t> fRestoreOffsetStack;
     int fFirstSavedLayerIndex;
     enum {
         kNoSavedLayerIndex = -1
     };
-#endif
 
     SkTDArray<uint32_t> fCullOffsetStack;
 
@@ -145,10 +140,7 @@ private:
         size_t offset = fWriter.bytesWritten();
 
         this->predrawNotify();
-
-    #ifdef SK_DEBUG_TRACE
-        SkDebugf("add %s\n", DrawTypeToString(drawType));
-    #endif
+        fContentInfo.addOperation();
 
         SkASSERT(0 != *size);
         SkASSERT(((uint8_t) drawType) == drawType);
@@ -177,6 +169,7 @@ private:
     const SkFlatData* addPaint(const SkPaint& paint) { return this->addPaintPtr(&paint); }
     const SkFlatData* addPaintPtr(const SkPaint* paint);
     void addFlatPaint(const SkFlatData* flatPaint);
+    void addPatch(const SkPoint cubics[12]);
     void addPath(const SkPath& path);
     void addPicture(const SkPicture* picture);
     void addPoint(const SkPoint& point);
@@ -191,43 +184,11 @@ private:
 
     int find(const SkBitmap& bitmap);
 
-#ifdef SK_DEBUG_DUMP
-public:
-    void dumpMatrices();
-    void dumpPaints();
-#endif
-
-#ifdef SK_DEBUG_SIZE
-public:
-    size_t size() const;
-    int bitmaps(size_t* size) const;
-    int matrices(size_t* size) const;
-    int paints(size_t* size) const;
-    int paths(size_t* size) const;
-    int regions(size_t* size) const;
-    size_t streamlen() const;
-
-    size_t fPointBytes, fRectBytes, fTextBytes;
-    int fPointWrites, fRectWrites, fTextWrites;
-#endif
-
-#ifdef SK_DEBUG_VALIDATE
-public:
-    void validate(size_t initialOffset, uint32_t size) const;
-private:
-    void validateBitmaps() const;
-    void validateMatrices() const;
-    void validatePaints() const;
-    void validatePaths() const;
-    void validateRegions() const;
-#else
-public:
+protected:
     void validate(size_t initialOffset, size_t size) const {
         SkASSERT(fWriter.bytesWritten() == initialOffset + size);
     }
-#endif
 
-protected:
     virtual SkSurface* onNewSurface(const SkImageInfo&) SK_OVERRIDE;
     const void* onPeekPixels(SkImageInfo*, size_t*) SK_OVERRIDE {
         return NULL;
@@ -252,13 +213,17 @@ protected:
                                 SkScalar constY, const SkPaint&) SK_OVERRIDE;
     virtual void onDrawTextOnPath(const void* text, size_t byteLength, const SkPath& path,
                                   const SkMatrix* matrix, const SkPaint&) SK_OVERRIDE;
+    
+    virtual void onDrawPatch(const SkPoint cubics[12], const SkColor colors[4],
+                             const SkPoint texCoords[4], SkXfermode* xmode,
+                             const SkPaint& paint) SK_OVERRIDE;
 
     virtual void onClipRect(const SkRect&, SkRegion::Op, ClipEdgeStyle) SK_OVERRIDE;
     virtual void onClipRRect(const SkRRect&, SkRegion::Op, ClipEdgeStyle) SK_OVERRIDE;
     virtual void onClipPath(const SkPath&, SkRegion::Op, ClipEdgeStyle) SK_OVERRIDE;
     virtual void onClipRegion(const SkRegion&, SkRegion::Op) SK_OVERRIDE;
 
-    virtual void onDrawPicture(const SkPicture* picture) SK_OVERRIDE;
+    virtual void onDrawPicture(const SkPicture*, const SkMatrix*, const SkPaint*) SK_OVERRIDE;
 
     // Return fontmetrics.fTop,fBottom in topbot[0,1], after they have been
     // tweaked by paint.computeFastBounds().
@@ -306,9 +271,6 @@ protected:
     SkBitmapHeap* fBitmapHeap;
 
 private:
-    friend class MatrixClipState; // for access to *Impl methods
-    friend class SkMatrixClipStateMgr; // for access to *Impl methods
-
     SkPictureContentInfo fContentInfo;
     SkAutoTUnref<SkPathHeap> fPathHeap;
 
@@ -327,10 +289,6 @@ private:
 
     friend class SkPictureData;   // for SkPictureData's SkPictureRecord-based constructor
     friend class SkPictureTester; // for unit testing
-
-#ifdef SK_COLLAPSE_MATRIX_CLIP_STATE
-    SkMatrixClipStateMgr fMCMgr;
-#endif
 
     typedef SkCanvas INHERITED;
 };

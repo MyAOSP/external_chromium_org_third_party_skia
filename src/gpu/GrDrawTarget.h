@@ -84,32 +84,13 @@ public:
      */
     GrDrawState* drawState() { return fDrawState; }
 
-    /**
-     * Color alpha and coverage are two inputs to the drawing pipeline. For some
-     * blend modes it is safe to fold the coverage into constant or per-vertex
-     * color alpha value. For other blend modes they must be handled separately.
-     * Depending on features available in the underlying 3D API this may or may
-     * not be possible.
-     *
-     * This function considers the current draw state and the draw target's
-     * capabilities to determine whether coverage can be handled correctly. The
-     * following assumptions are made:
-     *    1. The caller intends to somehow specify coverage. This can be
-     *       specified either by enabling a coverage stage on the GrDrawState or
-     *       via the vertex layout.
-     *    2. Other than enabling coverage stages or enabling coverage in the
-     *       layout, the current configuration of the target's GrDrawState is as
-     *       it will be at draw time.
-     */
-    bool canApplyCoverage() const;
-
     /** When we're using coverage AA but the blend is incompatible (given gpu
      * limitations) we should disable AA. */
-    bool shouldDisableCoverageAAForBlend() {
+    bool shouldDisableCoverageAAForBlend() const {
         // Enable below if we should draw with AA even when it produces
         // incorrect blending.
         // return false;
-        return !this->canApplyCoverage();
+        return !this->getDrawState().couldApplyCoverage(*this->caps());
     }
 
     /**
@@ -349,7 +330,7 @@ public:
      * @param count           Number of paths to draw (length of indices array)
      * @param transforms      Array of individual transforms, one for each path
      * @param transformsType  Type of transformations in the array. Array contains
-                              PathTransformSize(transformsType) × count elements
+                              PathTransformSize(transformsType) * count elements
      * @param fill            Fill type for drawing all the paths
      */
     enum PathTransformType {

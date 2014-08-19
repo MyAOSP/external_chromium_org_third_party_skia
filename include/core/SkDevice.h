@@ -243,7 +243,8 @@ protected:
                               const uint16_t indices[], int indexCount,
                               const SkPaint& paint) = 0;
     // default implementation calls drawVertices
-    virtual void drawPatch(const SkDraw&, const SkPatch& patch, const SkPaint& paint);
+    virtual void drawPatch(const SkDraw&, const SkPoint cubics[12], const SkColor colors[4],
+                           const SkPoint texCoords[4], SkXfermode* xmode, const SkPaint& paint);
     /** The SkDevice passed will be an SkDevice which was returned by a call to
         onCreateDevice on this device with kSaveLayer_Usage.
      */
@@ -348,7 +349,8 @@ protected:
      *  to perform some device-specific warm up tasks and then let SkCanvas
      *  perform the main rendering loop (by return false from here).
      */
-    virtual bool EXPERIMENTAL_drawPicture(SkCanvas* canvas, const SkPicture* picture);
+    virtual bool EXPERIMENTAL_drawPicture(SkCanvas*, const SkPicture*, const SkMatrix*,
+                                          const SkPaint*);
 
 private:
     friend class SkCanvas;
@@ -380,7 +382,7 @@ private:
      */
     virtual void flush() {}
 
-    virtual SkImageFilter::UniqueIDCache* getImageFilterCache() { return NULL; }
+    virtual SkImageFilter::Cache* getImageFilterCache() { return NULL; }
 
     SkIPoint    fOrigin;
     SkMetaData* fMetaData;

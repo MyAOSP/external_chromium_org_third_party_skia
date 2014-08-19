@@ -47,6 +47,7 @@ public:
         kNoMoreBitmapFlatten_Version       = 28,
         kSimplifyLocalMatrix_Version       = 30,
         kImageFilterUniqueID_Version       = 31,
+        kRemoveAndroidPaintOpts_Version    = 32,
     };
 
     /**
@@ -108,6 +109,7 @@ public:
     virtual void readIRect(SkIRect* rect);
     virtual void readRect(SkRect* rect);
     virtual void readRegion(SkRegion* region);
+    
     virtual void readPath(SkPath* path);
     void readPaint(SkPaint* paint) { paint->unflatten(*this); }
 

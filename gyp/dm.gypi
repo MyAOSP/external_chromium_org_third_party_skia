@@ -19,6 +19,7 @@
     'jsoncpp.gyp:jsoncpp',
     'skia_lib.gyp:skia_lib',
     'tools.gyp:crash_handler',
+    'tools.gyp:sk_tool_proc_stats',
     'tools.gyp:sk_tool_utils',
   ],
   'includes': [
@@ -50,6 +51,7 @@
     '../src/utils/debugger/SkDebugCanvas.cpp',
     '../src/utils/debugger/SkDrawCommand.cpp',
     '../src/utils/debugger/SkObjectParser.cpp',
+    '../tools/LazyDecodeBitmap.cpp',
   ],
   'conditions': [
     [ 'skia_gpu == 1', {

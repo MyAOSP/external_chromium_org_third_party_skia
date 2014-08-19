@@ -6,6 +6,7 @@
  */
 
 #include "SkCanvas.h"
+#include "SkPatchUtils.h"
 #include "SkPictureData.h"
 #include "SkPicturePlayback.h"
 #include "SkPictureRecord.h"
@@ -306,6 +307,31 @@ void SkPicturePlayback::handleOp(SkReader32* reader,
         case DRAW_PAINT:
             canvas->drawPaint(*fPictureData->getPaint(reader));
             break;
+        case DRAW_PATCH: {
+            const SkPaint& paint = *fPictureData->getPaint(reader);
+            
+            const SkPoint* cubics = (const SkPoint*)reader->skip(SkPatchUtils::kNumCtrlPts *
+                                                                 sizeof(SkPoint));
+            uint32_t flag = reader->readInt();
+            const SkColor* colors = NULL;
+            if (flag & DRAW_VERTICES_HAS_COLORS) {
+                colors = (const SkColor*)reader->skip(SkPatchUtils::kNumCorners * sizeof(SkColor));
+            }
+            const SkPoint* texCoords = NULL;
+            if (flag & DRAW_VERTICES_HAS_TEXS) {
+                texCoords = (const SkPoint*)reader->skip(SkPatchUtils::kNumCorners *
+                                                         sizeof(SkPoint));
+            }
+            SkAutoTUnref<SkXfermode> xfer;
+            if (flag & DRAW_VERTICES_HAS_XFER) {
+                int mode = reader->readInt();
+                if (mode < 0 || mode > SkXfermode::kLastMode) {
+                    mode = SkXfermode::kModulate_Mode;
+                }
+                xfer.reset(SkXfermode::Create((SkXfermode::Mode)mode));
+            }
+            canvas->drawPatch(cubics, colors, texCoords, xfer, paint);
+        } break;
         case DRAW_PATH: {
             const SkPaint& paint = *fPictureData->getPaint(reader);
             canvas->drawPath(fPictureData->getPath(reader), paint);
@@ -313,6 +339,13 @@ void SkPicturePlayback::handleOp(SkReader32* reader,
         case DRAW_PICTURE:
             canvas->drawPicture(fPictureData->getPicture(reader));
             break;
+        case DRAW_PICTURE_MATRIX_PAINT: {
+            const SkPaint* paint = fPictureData->getPaint(reader);
+            SkMatrix matrix;
+            reader->readMatrix(&matrix);
+            const SkPicture* pic = fPictureData->getPicture(reader);
+            canvas->drawPicture(pic, &matrix, paint);
+        } break;
         case DRAW_POINTS: {
             const SkPaint& paint = *fPictureData->getPaint(reader);
             SkCanvas::PointMode mode = (SkCanvas::PointMode)reader->readInt();

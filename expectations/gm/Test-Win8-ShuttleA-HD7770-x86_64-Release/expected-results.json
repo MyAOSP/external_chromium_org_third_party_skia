@@ -267,6 +267,33 @@
       ], 
       "reviewed-by-human": false
     }, 
+    "astcbitmap_565.png": {
+      "allowed-digests": [
+        [
+          "bitmap-64bitMD5", 
+          7296080463405164282
+        ]
+      ], 
+      "reviewed-by-human": true
+    }, 
+    "astcbitmap_8888.png": {
+      "allowed-digests": [
+        [
+          "bitmap-64bitMD5", 
+          7104155647358997780
+        ]
+      ], 
+      "reviewed-by-human": true
+    }, 
+    "astcbitmap_gpu.png": {
+      "allowed-digests": [
+        [
+          "bitmap-64bitMD5", 
+          7104155647358997780
+        ]
+      ], 
+      "reviewed-by-human": true
+    }, 
     "bat_gpu.png": {
       "allowed-digests": [
         [
@@ -3280,10 +3307,7 @@
           9760605998205294594
         ]
       ], 
-      "bugs": [
-        1935
-      ], 
-      "reviewed-by-human": false
+      "reviewed-by-human": true
     }, 
     "clamped_gradients_pdf-poppler.png": {
       "allowed-digests": [
@@ -4387,7 +4411,7 @@
           11172569970945835791
         ]
       ], 
-      "reviewed-by-human": false
+      "reviewed-by-human": true
     }, 
     "convexpaths_565.png": {
       "allowed-digests": [
@@ -5807,6 +5831,33 @@
         [
           "bitmap-64bitMD5", 
           17338451294848191155
+        ]
+      ], 
+      "reviewed-by-human": true
+    }, 
+    "etc1bitmap_r11.ktx_565.png": {
+      "allowed-digests": [
+        [
+          "bitmap-64bitMD5", 
+          1495436641215277847
+        ]
+      ], 
+      "reviewed-by-human": true
+    }, 
+    "etc1bitmap_r11.ktx_8888.png": {
+      "allowed-digests": [
+        [
+          "bitmap-64bitMD5", 
+          14073051900873346231
+        ]
+      ], 
+      "reviewed-by-human": true
+    }, 
+    "etc1bitmap_r11.ktx_gpu.png": {
+      "allowed-digests": [
+        [
+          "bitmap-64bitMD5", 
+          14073051900873346231
         ]
       ], 
       "reviewed-by-human": true
@@ -7444,10 +7495,7 @@
           9549780950462638931
         ]
       ], 
-      "bugs": [
-        1935
-      ], 
-      "reviewed-by-human": false
+      "reviewed-by-human": true
     }, 
     "gradient_dirty_laundry_pdf-poppler.png": {
       "allowed-digests": [
@@ -7534,7 +7582,7 @@
           13522756995350332622
         ]
       ], 
-      "reviewed-by-human": false
+      "reviewed-by-human": true
     }, 
     "gradients_2pt_conical_edge_pdf-poppler.png": {
       "allowed-digests": [
@@ -7570,7 +7618,7 @@
           7583081466968213482
         ]
       ], 
-      "reviewed-by-human": false
+      "reviewed-by-human": true
     }, 
     "gradients_2pt_conical_inside_pdf-poppler.png": {
       "allowed-digests": [
@@ -7606,7 +7654,7 @@
           8254576008248233124
         ]
       ], 
-      "reviewed-by-human": false
+      "reviewed-by-human": true
     }, 
     "gradients_2pt_conical_outside_pdf-poppler.png": {
       "allowed-digests": [
@@ -10318,10 +10366,7 @@
           17814588108040439543
         ]
       ], 
-      "bugs": [
-        1935
-      ], 
-      "reviewed-by-human": false
+      "reviewed-by-human": true
     }, 
     "rects_pdf-poppler.png": {
       "allowed-digests": [
@@ -12202,10 +12247,7 @@
           4283066490335654069
         ]
       ], 
-      "bugs": [
-        1935
-      ], 
-      "reviewed-by-human": false
+      "reviewed-by-human": true
     }, 
     "thinrects_pdf-poppler.png": {
       "allowed-digests": [
@@ -12250,10 +12292,7 @@
           8250384630523253692
         ]
       ], 
-      "bugs": [
-        1935
-      ], 
-      "reviewed-by-human": false
+      "reviewed-by-human": true
     }, 
     "thinstrokedrects_pdf-poppler.png": {
       "allowed-digests": [
