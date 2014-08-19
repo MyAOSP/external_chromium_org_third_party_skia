@@ -41,15 +41,16 @@
       which records are displayed.
     </div>
 
-    <div class="warning-div"
-         ng-show="header[constants.KEY__HEADER__IS_EDITABLE] && header[constants.KEY__HEADER__IS_EXPORTED]">
-      WARNING!  These results are editable and exported, so any user
-      who can connect to this server over the network can modify them.
-    </div>
-
     <div ng-show="header[constants.KEY__HEADER__TIME_UPDATED]">
-      setA: "{{setASection}}" within {{setADir}}<br>
-      setB: "{{setBSection}}" within {{setBDir}}<br>
+      setA: "{{header[constants.KEY__HEADER__SET_A_DESCRIPTIONS][constants.KEY__SET_DESCRIPTIONS__SECTION]}}"
+      within {{header[constants.KEY__HEADER__SET_A_DESCRIPTIONS][constants.KEY__SET_DESCRIPTIONS__DIR]}}
+      <span ng-show="header[constants.KEY__HEADER__SET_A_DESCRIPTIONS][constants.KEY__SET_DESCRIPTIONS__REPO_REVISION]">at <a href="https://skia.googlesource.com/skia/+/{{header[constants.KEY__HEADER__SET_A_DESCRIPTIONS][constants.KEY__SET_DESCRIPTIONS__REPO_REVISION]}}">rev {{header[constants.KEY__HEADER__SET_A_DESCRIPTIONS][constants.KEY__SET_DESCRIPTIONS__REPO_REVISION]}}</a></span>
+      <br>
+      setB: "{{header[constants.KEY__HEADER__SET_B_DESCRIPTIONS][constants.KEY__SET_DESCRIPTIONS__SECTION]}}"
+      within {{header[constants.KEY__HEADER__SET_B_DESCRIPTIONS][constants.KEY__SET_DESCRIPTIONS__DIR]}}
+      <span ng-show="header[constants.KEY__HEADER__SET_B_DESCRIPTIONS][constants.KEY__SET_DESCRIPTIONS__REPO_REVISION]">at <a href="https://skia.googlesource.com/skia/+/{{header[constants.KEY__HEADER__SET_B_DESCRIPTIONS][constants.KEY__SET_DESCRIPTIONS__REPO_REVISION]}}">rev {{header[constants.KEY__HEADER__SET_B_DESCRIPTIONS][constants.KEY__SET_DESCRIPTIONS__REPO_REVISION]}}</a></span>
+      <br>
+      <a href="{{liveQueryUrl}}">latest raw JSON diffs between these two sets</a><br>
       These results current as of
       {{localTimeString(header[constants.KEY__HEADER__TIME_UPDATED])}}
     </div>
@@ -169,10 +170,13 @@
 
       <!-- Submission UI that we only show in the Pending Approval tab. -->
       <div ng-show="'Pending Approval' == viewingTab">
+        <div style="font-size:20px">
+          TODO(epoger): We don't yet support submitting new SKP expectations.
+        </div>
         <div style="display:inline-block">
           <button style="font-size:20px"
                   ng-click="submitApprovals(filteredImagePairs)"
-                  ng-disabled="submitPending || (filteredImagePairs.length == 0)">
+                  ng-disabled="true || submitPending || (filteredImagePairs.length == 0)">
             Update these {{filteredImagePairs.length}} expectations on the server
           </button>
         </div>
@@ -266,7 +270,7 @@
             <a ng-class="'sort-' + sortedByColumnsCls(constants.KEY__IMAGEPAIRS__IMAGE_A_URL)"
                ng-click="sortResultsBy('none', constants.KEY__IMAGEPAIRS__IMAGE_A_URL)"
                href=""
-               title="setA: '{{setASection}}' within {{setADir}}"
+               title="setA: '{{header[constants.KEY__HEADER__SET_A_DESCRIPTIONS][constants.KEY__SET_DESCRIPTIONS__SECTION]}}' within {{header[constants.KEY__HEADER__SET_A_DESCRIPTIONS][constants.KEY__SET_DESCRIPTIONS__DIR]}}"
                class="sortable-header">
                    {{imageSets[constants.KEY__IMAGESETS__SET__IMAGE_A][constants.KEY__IMAGESETS__FIELD__DESCRIPTION]}}
             </a>
@@ -275,7 +279,7 @@
             <a ng-class="'sort-' + sortedByColumnsCls(constants.KEY__IMAGEPAIRS__IMAGE_B_URL)"
                ng-click="sortResultsBy('none', constants.KEY__IMAGEPAIRS__IMAGE_B_URL)"
                href=""
-               title="setB: '{{setBSection}}' within {{setBDir}}"
+               title="setB: '{{header[constants.KEY__HEADER__SET_B_DESCRIPTIONS][constants.KEY__SET_DESCRIPTIONS__SECTION]}}' within {{header[constants.KEY__HEADER__SET_B_DESCRIPTIONS][constants.KEY__SET_DESCRIPTIONS__DIR]}}"
                class="sortable-header">
                   {{imageSets[constants.KEY__IMAGESETS__SET__IMAGE_B][constants.KEY__IMAGESETS__FIELD__DESCRIPTION]}}
             </a>

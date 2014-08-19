@@ -116,6 +116,9 @@ CONFIG_PAIRS_TO_COMPARE = [('8888', 'gpu')]
 # Ultimately, we will depend on buildbot steps linking to their own diffs on
 # the shared rebaseline_server instance.
 _SKP_BASE_GS_URL = 'gs://' + buildbot_globals.Get('skp_summaries_bucket')
+_SKP_BASE_REPO_URL = (
+    compare_rendered_pictures.REPO_URL_PREFIX + posixpath.join(
+        'expectations', 'skp'))
 _SKP_PLATFORMS = [
     'Test-Mac10.8-MacMini4.1-GeForce320M-x86_64-Debug',
     'Test-Ubuntu12-ShuttleA-GTX660-x86-Release',
@@ -222,7 +225,7 @@ def _create_index(file_path, config_pairs):
                 LIVE_PARAM__SET_A_SECTION:
                     gm_json.JSONKEY_EXPECTEDRESULTS,
                 LIVE_PARAM__SET_A_DIR:
-                    posixpath.join(_SKP_BASE_GS_URL, builder),
+                    posixpath.join(_SKP_BASE_REPO_URL, builder),
                 LIVE_PARAM__SET_B_SECTION:
                     gm_json.JSONKEY_ACTUALRESULTS,
                 LIVE_PARAM__SET_B_DIR:
@@ -269,7 +272,9 @@ class Server(object):
           at all, just compare to whatever files are already in actuals_dir
       port: which TCP port to listen on for HTTP requests
       export: whether to allow HTTP clients on other hosts to access this server
-      editable: whether HTTP clients are allowed to submit new baselines
+      editable: whether HTTP clients are allowed to submit new GM baselines
+          (SKP baseline modifications are performed using an entirely different
+          mechanism, not affected by this parameter)
       reload_seconds: polling interval with which to check for new results;
           if 0, don't check for new results at all
       config_pairs: List of (string, string) tuples; for each tuple, compare
@@ -344,7 +349,13 @@ class Server(object):
 
   @property
   def is_editable(self):
-    """ Returns true iff HTTP clients are allowed to submit new baselines. """
+    """ True iff HTTP clients are allowed to submit new GM baselines.
+
+    TODO(epoger): This only pertains to GM baselines; SKP baselines are
+    editable whenever expectations vs actuals are shown.
+    Once we move the GM baselines to use the same code as the SKP baselines,
+    we can delete this property.
+    """
     return self._editable
 
   @property
@@ -575,6 +586,52 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       }
     self.send_json_dict(response_dict)
 
+  def _get_live_results_or_prefetch(self, url_remainder, prefetch_only=False):
+    """ Handle a GET request for live-generated image diff data.
+
+    Args:
+      url_remainder: string indicating which image diffs to generate
+      prefetch_only: if True, the user isn't waiting around for results
+    """
+    param_dict = urlparse.parse_qs(url_remainder)
+    download_all_images = (
+        param_dict.get(LIVE_PARAM__DOWNLOAD_ONLY_DIFFERING, [''])[0].lower()
+        not in ['1', 'true'])
+    setA_dirs = param_dict[LIVE_PARAM__SET_A_DIR]
+    setB_dirs = param_dict[LIVE_PARAM__SET_B_DIR]
+    setA_section = self._validate_summary_section(
+        param_dict.get(LIVE_PARAM__SET_A_SECTION, [None])[0])
+    setB_section = self._validate_summary_section(
+        param_dict.get(LIVE_PARAM__SET_B_SECTION, [None])[0])
+
+    # If the sets show expectations vs actuals, always show expectations on
+    # the left (setA).
+    if ((setA_section == gm_json.JSONKEY_ACTUALRESULTS) and
+        (setB_section == gm_json.JSONKEY_EXPECTEDRESULTS)):
+      setA_dirs, setB_dirs = setB_dirs, setA_dirs
+      setA_section, setB_section = setB_section, setA_section
+
+    # Are we comparing some actuals against expectations stored in the repo?
+    # If so, we can allow the user to submit new baselines.
+    is_editable = (
+        (setA_section == gm_json.JSONKEY_EXPECTEDRESULTS) and
+        (setA_dirs[0].startswith(compare_rendered_pictures.REPO_URL_PREFIX)) and
+        (setB_section == gm_json.JSONKEY_ACTUALRESULTS))
+
+    results_obj = compare_rendered_pictures.RenderedPicturesComparisons(
+        setA_dirs=setA_dirs, setB_dirs=setB_dirs,
+        setA_section=setA_section, setB_section=setB_section,
+        image_diff_db=_SERVER.image_diff_db,
+        diff_base_url='/static/generated-images',
+        gs=_SERVER.gs, truncate_results=_SERVER.truncate_results,
+        prefetch_only=prefetch_only, download_all_images=download_all_images)
+    if prefetch_only:
+      self.send_response(200)
+    else:
+      self.send_json_dict(results_obj.get_packaged_results_of_type(
+          results_type=results_mod.KEY__HEADER__RESULTS_ALL,
+          is_editable=is_editable))
+
   def do_GET_live_results(self, url_remainder):
     """ Handle a GET request for live-generated image diff data.
 
@@ -582,11 +639,8 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       url_remainder: string indicating which image diffs to generate
     """
     logging.debug('do_GET_live_results: url_remainder="%s"' % url_remainder)
-    param_dict = urlparse.parse_qs(url_remainder)
-    results_obj = self._call_compare_rendered_pictures(
-        param_dict=param_dict, prefetch_only=False)
-    self.send_json_dict(results_obj.get_packaged_results_of_type(
-        results_mod.KEY__HEADER__RESULTS_ALL))
+    self._get_live_results_or_prefetch(
+        url_remainder=url_remainder, prefetch_only=False)
 
   def do_GET_prefetch_results(self, url_remainder):
     """ Prefetch image diff data for a future do_GET_live_results() call.
@@ -595,10 +649,8 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
       url_remainder: string indicating which image diffs to generate
     """
     logging.debug('do_GET_prefetch_results: url_remainder="%s"' % url_remainder)
-    param_dict = urlparse.parse_qs(url_remainder)
-    self._call_compare_rendered_pictures(
-        param_dict=param_dict, prefetch_only=True)
-    self.send_response(200)
+    self._get_live_results_or_prefetch(
+        url_remainder=url_remainder, prefetch_only=True)
 
   def do_GET_static(self, path):
     """ Handle a GET request for a file under STATIC_CONTENTS_SUBDIR .
@@ -745,32 +797,6 @@ class HTTPRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     self.end_headers()
     json.dump(json_dict, self.wfile)
 
-  def _call_compare_rendered_pictures(self, param_dict, prefetch_only):
-    """Instantiates RenderedPicturesComparisons object to serve a GET request.
-
-    Args:
-      param_dict: dictionary of URL parameters
-      prefetch_only: parameter to pass into RenderedPicturesComparisons
-          constructor
-
-    Returns: a reference to the new RenderedPicturesComparisons object.
-    """
-    download_all_images = (
-        param_dict.get(LIVE_PARAM__DOWNLOAD_ONLY_DIFFERING, [''])[0].lower()
-        not in ['1', 'true'])
-    setA_section = self._validate_summary_section(
-        param_dict.get(LIVE_PARAM__SET_A_SECTION, [None])[0])
-    setB_section = self._validate_summary_section(
-        param_dict.get(LIVE_PARAM__SET_B_SECTION, [None])[0])
-    return compare_rendered_pictures.RenderedPicturesComparisons(
-        setA_dirs=param_dict[LIVE_PARAM__SET_A_DIR],
-        setB_dirs=param_dict[LIVE_PARAM__SET_B_DIR],
-        setA_section=setA_section, setB_section=setB_section,
-        image_diff_db=_SERVER.image_diff_db,
-        diff_base_url='/static/generated-images',
-        gs=_SERVER.gs, truncate_results=_SERVER.truncate_results,
-        prefetch_only=prefetch_only, download_all_images=download_all_images)
-
   def _validate_summary_section(self, section_name):
     """Validates the section we have been requested to read within JSON summary.
 
@@ -818,7 +844,9 @@ def main():
                             'differences between these config pairs: '
                             + str(CONFIG_PAIRS_TO_COMPARE)))
   parser.add_argument('--editable', action='store_true',
-                      help=('Allow HTTP clients to submit new baselines.'))
+                      help=('Allow HTTP clients to submit new GM baselines; '
+                            'SKP baselines can be edited regardless of this '
+                            'setting.'))
   parser.add_argument('--export', action='store_true',
                       help=('Instead of only allowing access from HTTP clients '
                             'on localhost, allow HTTP clients on other hosts '

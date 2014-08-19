@@ -26,7 +26,7 @@
 #if SK_SUPPORT_GPU
     #include "gl/GrGLDefines.h"
     #include "GrContextFactory.h"
-    GrContextFactory gGrFactory;
+    SkAutoTDelete<GrContextFactory> gGrFactory;
 #endif
 
 __SK_FORCE_IMAGE_DECODER_LINKING;
@@ -56,6 +56,8 @@ DEFINE_double(overheadGoal, 0.0001,
               "Loop until timer overhead is at most this fraction of our measurments.");
 DEFINE_double(gpuMs, 5, "Target bench time in millseconds for GPU.");
 DEFINE_int32(gpuFrameLag, 5, "Overestimate of maximum number of frames GPU allows to lag.");
+DEFINE_bool(gpuCompressAlphaMasks, false, "Compress masks generated from falling back to "
+                                          "software path rendering.");
 
 DEFINE_string(outResultsFile, "", "If given, write results here as JSON.");
 DEFINE_int32(maxCalibrationAttempts, 3,
@@ -288,7 +290,7 @@ static bool is_gpu_config_allowed(const char* name, GrContextFactory::GLContextT
     if (!is_cpu_config_allowed(name)) {
         return false;
     }
-    if (const GrContext* ctx = gGrFactory.get(ctxType)) {
+    if (const GrContext* ctx = gGrFactory->get(ctxType)) {
         return sampleCnt <= ctx->getMaxSampleCount();
     }
     return false;
@@ -362,9 +364,9 @@ static Target* is_enabled(Benchmark* bench, const Config& config) {
     }
 #if SK_SUPPORT_GPU
     else if (Benchmark::kGPU_Backend == config.backend) {
-        target->surface.reset(SkSurface::NewRenderTarget(gGrFactory.get(config.ctxType), info,
+        target->surface.reset(SkSurface::NewRenderTarget(gGrFactory->get(config.ctxType), info,
                                                          config.samples));
-        target->gl = gGrFactory.getGLContext(config.ctxType);
+        target->gl = gGrFactory->getGLContext(config.ctxType);
     }
 #endif
 
@@ -528,6 +530,12 @@ int nanobench_main() {
     SetupCrashHandler();
     SkAutoGraphics ag;
 
+#if SK_SUPPORT_GPU
+    GrContext::Options grContextOpts;
+    grContextOpts.fDrawPathToCompressedTexture = FLAGS_gpuCompressAlphaMasks;
+    gGrFactory.reset(SkNEW_ARGS(GrContextFactory, (grContextOpts)));
+#endif
+
     if (kAutoTuneLoops != FLAGS_loops) {
         FLAGS_samples     = 1;
         FLAGS_gpuFrameLag = 0;
@@ -671,10 +679,10 @@ int nanobench_main() {
 
     #if SK_SUPPORT_GPU
         if (FLAGS_abandonGpuContext) {
-            gGrFactory.abandonContexts();
+            gGrFactory->abandonContexts();
         }
         if (FLAGS_resetGpuContext || FLAGS_abandonGpuContext) {
-            gGrFactory.destroyContexts();
+            gGrFactory->destroyContexts();
         }
     #endif
     }

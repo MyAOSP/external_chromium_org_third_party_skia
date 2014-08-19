@@ -141,12 +141,12 @@ Loader.controller(
      * Once the dictionary is loaded, unhide the page elements so they can
      * render the data.
      */
-    var liveQueryUrl =
+    $scope.liveQueryUrl =
        "/live-results/setADir=" + encodeURIComponent($scope.setADir) +
        "&setASection=" + encodeURIComponent($scope.setASection) +
        "&setBDir=" + encodeURIComponent($scope.setBDir) +
        "&setBSection=" + encodeURIComponent($scope.setBSection);
-    $http.get(liveQueryUrl).success(
+    $http.get($scope.liveQueryUrl).success(
       function(data, status, header, config) {
         var dataHeader = data[constants.KEY__ROOT__HEADER];
         if (dataHeader[constants.KEY__HEADER__SCHEMA_VERSION] !=
@@ -1052,10 +1052,14 @@ Loader.controller(
      *
      * @param imagePair: ImagePair to generate image diff URL for
      */
+     // TODO (stephana): this is a temporary fix. A fix is in the works
+     // to get rid of this function and include the URL in the data 
+     // sent from the backend.
+
     $scope.getImageDiffRelativeUrl = function(imagePair) {
       var before =
-          imagePair[constants.KEY__IMAGEPAIRS__IMAGE_A_URL] + "-vs-" +
-          imagePair[constants.KEY__IMAGEPAIRS__IMAGE_B_URL];
+          imagePair[constants.KEY__IMAGEPAIRS__IMAGE_A_URL] + "_png-vs-" +
+          imagePair[constants.KEY__IMAGEPAIRS__IMAGE_B_URL] + "_png";
       return before.replace(/[^\w\-]/g, "_") + ".png";
     };
 
