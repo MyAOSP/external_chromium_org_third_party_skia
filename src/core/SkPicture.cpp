@@ -197,12 +197,18 @@ void SkPicture::draw(SkCanvas* canvas, SkDrawPictureCallback* callback) const {
     SkASSERT(NULL != canvas);
     SkASSERT(NULL != fData.get() || NULL != fRecord.get());
 
+    // If the query contains the whole picture, don't bother with the BBH.
+    SkRect clipBounds = { 0, 0, 0, 0 };
+    (void)canvas->getClipBounds(&clipBounds);
+    const bool useBBH = !clipBounds.contains(SkRect::MakeWH(this->width(), this->height()));
+
     if (NULL != fData.get()) {
         SkPicturePlayback playback(this);
+        playback.setUseBBH(useBBH);
         playback.draw(canvas, callback);
     }
     if (NULL != fRecord.get()) {
-        SkRecordDraw(*fRecord, canvas, fBBH.get(), callback);
+        SkRecordDraw(*fRecord, canvas, useBBH ? fBBH.get() : NULL, callback);
     }
 }
 
@@ -392,6 +398,11 @@ bool SkPicture::suitableForGpuRasterization(GrContext* context, const char **rea
     return fData->suitableForGpuRasterization(context, reason);
 }
 #endif
+
+// fRecord TODO
+bool SkPicture::hasText() const {
+    return fData.get() && fData->hasText();
+}
 
 // fRecord OK
 bool SkPicture::willPlayBackBitmaps() const {

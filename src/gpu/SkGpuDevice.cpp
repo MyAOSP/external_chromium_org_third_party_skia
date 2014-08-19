@@ -1854,14 +1854,14 @@ void SkGpuDevice::EXPERIMENTAL_optimize(const SkPicture* picture) {
         return;
     }
 
-    SkPicture::AccelData::Key key = GPUAccelData::ComputeAccelDataKey();
+    SkPicture::AccelData::Key key = GrAccelData::ComputeAccelDataKey();
 
     const SkPicture::AccelData* existing = picture->EXPERIMENTAL_getAccelData(key);
     if (NULL != existing) {
         return;
     }
 
-    SkAutoTUnref<GPUAccelData> data(SkNEW_ARGS(GPUAccelData, (key)));
+    SkAutoTUnref<GrAccelData> data(SkNEW_ARGS(GrAccelData, (key)));
 
     picture->EXPERIMENTAL_addAccelData(data);
 
@@ -1885,14 +1885,14 @@ bool SkGpuDevice::EXPERIMENTAL_drawPicture(SkCanvas* mainCanvas, const SkPicture
 
     fContext->getLayerCache()->processDeletedPictures();
 
-    SkPicture::AccelData::Key key = GPUAccelData::ComputeAccelDataKey();
+    SkPicture::AccelData::Key key = GrAccelData::ComputeAccelDataKey();
 
     const SkPicture::AccelData* data = picture->EXPERIMENTAL_getAccelData(key);
     if (NULL == data) {
         return false;
     }
 
-    const GPUAccelData *gpuData = static_cast<const GPUAccelData*>(data);
+    const GrAccelData *gpuData = static_cast<const GrAccelData*>(data);
 
     if (0 == gpuData->numSaveLayers()) {
         return false;
@@ -1925,11 +1925,11 @@ bool SkGpuDevice::EXPERIMENTAL_drawPicture(SkCanvas* mainCanvas, const SkPicture
         for (int i = 0; i < ops->numOps(); ++i) {
             uint32_t offset = ops->offset(i);
 
-            // For now we're saving all the layers in the GPUAccelData so they
+            // For now we're saving all the layers in the GrAccelData so they
             // can be nested. Additionally, the nested layers appear before
             // their parent in the list.
             for (int j = 0 ; j < gpuData->numSaveLayers(); ++j) {
-                const GPUAccelData::SaveLayerInfo& info = gpuData->saveLayerInfo(j);
+                const GrAccelData::SaveLayerInfo& info = gpuData->saveLayerInfo(j);
 
                 if (pullForward[j]) {
                     continue;            // already pulling forward
@@ -1955,7 +1955,7 @@ bool SkGpuDevice::EXPERIMENTAL_drawPicture(SkCanvas* mainCanvas, const SkPicture
         // In this case there is no BBH associated with the picture. Pre-render
         // all the layers that intersect the drawn region
         for (int j = 0; j < gpuData->numSaveLayers(); ++j) {
-            const GPUAccelData::SaveLayerInfo& info = gpuData->saveLayerInfo(j);
+            const GrAccelData::SaveLayerInfo& info = gpuData->saveLayerInfo(j);
 
             SkIRect layerRect = SkIRect::MakeXYWH(info.fOffset.fX,
                                                   info.fOffset.fY,
@@ -1987,9 +1987,9 @@ bool SkGpuDevice::EXPERIMENTAL_drawPicture(SkCanvas* mainCanvas, const SkPicture
     // Generate the layer and/or ensure it is locked
     for (int i = 0; i < gpuData->numSaveLayers(); ++i) {
         if (pullForward[i]) {
-            const GPUAccelData::SaveLayerInfo& info = gpuData->saveLayerInfo(i);
+            const GrAccelData::SaveLayerInfo& info = gpuData->saveLayerInfo(i);
 
-            GrCachedLayer* layer = fContext->getLayerCache()->findLayerOrCreate(picture, 
+            GrCachedLayer* layer = fContext->getLayerCache()->findLayerOrCreate(picture->uniqueID(), 
                                                                                 info.fSaveLayerOpID, 
                                                                                 info.fRestoreOpID, 
                                                                                 info.fCTM);
@@ -2007,7 +2007,8 @@ bool SkGpuDevice::EXPERIMENTAL_drawPicture(SkCanvas* mainCanvas, const SkPicture
             desc.fConfig = kSkia8888_GrPixelConfig;
             // TODO: need to deal with sample count
 
-            bool needsRendering = !fContext->getLayerCache()->lock(layer, desc);
+            bool needsRendering = fContext->getLayerCache()->lock(layer, desc,
+                                                    info.fHasNestedLayers || info.fIsNested);
             if (NULL == layer->texture()) {
                 continue;
             }
@@ -2124,14 +2125,23 @@ bool SkGpuDevice::EXPERIMENTAL_drawPicture(SkCanvas* mainCanvas, const SkPicture
 
     // unlock the layers
     for (int i = 0; i < gpuData->numSaveLayers(); ++i) {
-        const GPUAccelData::SaveLayerInfo& info = gpuData->saveLayerInfo(i);
+        const GrAccelData::SaveLayerInfo& info = gpuData->saveLayerInfo(i);
 
-        GrCachedLayer* layer = fContext->getLayerCache()->findLayer(picture, 
+        GrCachedLayer* layer = fContext->getLayerCache()->findLayer(picture->uniqueID(), 
                                                                     info.fSaveLayerOpID,
                                                                     info.fRestoreOpID,
                                                                     info.fCTM);
         fContext->getLayerCache()->unlock(layer);
     }
+
+#if DISABLE_CACHING
+    // This code completely clears out the atlas. It is required when 
+    // caching is disabled so the atlas doesn't fill up and force more
+    // free floating layers
+    fContext->getLayerCache()->purge(picture->uniqueID());
+
+    fContext->getLayerCache()->purgeAll();
+#endif
 
     return true;
 }
