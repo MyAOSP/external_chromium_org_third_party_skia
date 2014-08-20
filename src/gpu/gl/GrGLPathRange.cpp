@@ -13,7 +13,7 @@
 
 GrGLPathRange::GrGLPathRange(GrGpuGL* gpu, size_t size, const SkStrokeRec& stroke)
     : INHERITED(gpu, size, stroke),
-      fBasePathID(gpu->pathRendering()->genPaths(fSize)),
+      fBasePathID(gpu->glPathRendering()->genPaths(fSize)),
       fNumDefinedPaths(0) {
 }
 
@@ -28,7 +28,10 @@ void GrGLPathRange::initAt(size_t index, const SkPath& skPath) {
     }
 
     // Make sure the path at this index hasn't been initted already.
-    SkASSERT(GR_GL_FALSE == gpu->pathRendering()->isPath(fBasePathID + index));
+    SkDEBUGCODE(
+        GrGLboolean isPath;
+        GR_GL_CALL_RET(gpu->glInterface(), isPath, IsPath(fBasePathID + index)));
+    SkASSERT(GR_GL_FALSE == isPath);
 
     GrGLPath::InitPathObject(gpu, fBasePathID + index, skPath, fStroke);
     ++fNumDefinedPaths;
@@ -39,7 +42,7 @@ void GrGLPathRange::onRelease() {
     SkASSERT(NULL != this->getGpu());
 
     if (0 != fBasePathID && !this->isWrapped()) {
-        static_cast<GrGpuGL*>(this->getGpu())->pathRendering()->deletePaths(fBasePathID, fSize);
+        static_cast<GrGpuGL*>(this->getGpu())->glPathRendering()->deletePaths(fBasePathID, fSize);
         fBasePathID = 0;
     }
 

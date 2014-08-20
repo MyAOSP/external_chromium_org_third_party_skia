@@ -305,7 +305,20 @@ private:
 
     SkAutoTDelete<SkRecord>       fRecord;
     SkAutoTUnref<SkBBoxHierarchy> fBBH;
-    bool fRecordWillPlayBackBitmaps; // TODO: const
+
+    struct Analysis {
+        Analysis() {}  // Only used by SkPictureData codepath.
+        explicit Analysis(const SkRecord&);
+
+        bool suitableForGpuRasterization(const char** reason, int sampleCount) const;
+
+        bool        fWillPlaybackBitmaps;
+        bool        fHasText;
+        int         fNumPaintWithPathEffectUses;
+        int         fNumFastPathDashEffects;
+        int         fNumAAConcavePaths;
+        int         fNumAAHairlineConcavePaths;
+    } fAnalysis;
 };
 
 #endif
