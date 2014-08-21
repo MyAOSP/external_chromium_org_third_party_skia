@@ -351,6 +351,8 @@ class RenderedPicturesComparisons(results.BaseComparisons):
       result_dict: dictionary holding output of render_pictures; if None,
           this method will return without raising an Exception
     """
+    # TODO(stephana): These values should be defined as constants somewhere,
+    # to be kept in sync between this file and writable_expectations.py
     expected_header_type = 'ChecksummedImages'
     expected_header_revision = 1
 
@@ -397,7 +399,7 @@ class RenderedPicturesComparisons(results.BaseComparisons):
     def _checksum_and_relative_url(dic):
       if dic:
         return ((dic[gm_json.JSONKEY_IMAGE_CHECKSUMALGORITHM],
-                 dic[gm_json.JSONKEY_IMAGE_CHECKSUMVALUE]),
+                 int(dic[gm_json.JSONKEY_IMAGE_CHECKSUMVALUE])),
                 dic[gm_json.JSONKEY_IMAGE_FILEPATH])
       else:
         return None, None
