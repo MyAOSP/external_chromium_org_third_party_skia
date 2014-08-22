@@ -303,17 +303,25 @@ void SkColorMatrixFilter::filterSpan16(const uint16_t src[], int count,
 ///////////////////////////////////////////////////////////////////////////////
 
 void SkColorMatrixFilter::flatten(SkWriteBuffer& buffer) const {
-    this->INHERITED::flatten(buffer);
     SkASSERT(sizeof(fMatrix.fMat)/sizeof(SkScalar) == 20);
     buffer.writeScalarArray(fMatrix.fMat, 20);
 }
 
-SkColorMatrixFilter::SkColorMatrixFilter(SkReadBuffer& buffer)
-        : INHERITED(buffer) {
+#ifdef SK_SUPPORT_LEGACY_DEEPFLATTENING
+SkColorMatrixFilter::SkColorMatrixFilter(SkReadBuffer& buffer) : INHERITED(buffer) {
     SkASSERT(buffer.getArrayCount() == 20);
     if (buffer.readScalarArray(fMatrix.fMat, 20)) {
         this->initState(fMatrix.fMat);
     }
+}
+#endif
+
+SkFlattenable* SkColorMatrixFilter::CreateProc(SkReadBuffer& buffer) {
+    SkColorMatrix matrix;
+    if (buffer.readScalarArray(matrix.fMat, 20)) {
+        return Create(matrix);
+    }
+    return NULL;
 }
 
 bool SkColorMatrixFilter::asColorMatrix(SkScalar matrix[20]) const {
@@ -327,7 +335,7 @@ bool SkColorMatrixFilter::asColorMatrix(SkScalar matrix[20]) const {
 #include "GrEffect.h"
 #include "GrTBackendEffectFactory.h"
 #include "gl/GrGLEffect.h"
-#include "gl/GrGLShaderBuilder.h"
+#include "gl/builders/GrGLProgramBuilder.h"
 
 class ColorMatrixEffect : public GrEffect {
 public:
@@ -398,17 +406,17 @@ public:
         : INHERITED(factory) {
         }
 
-        virtual void emitCode(GrGLShaderBuilder* builder,
+        virtual void emitCode(GrGLProgramBuilder* builder,
                               const GrDrawEffect&,
                               const GrEffectKey&,
                               const char* outputColor,
                               const char* inputColor,
                               const TransformedCoordsArray&,
                               const TextureSamplerArray&) SK_OVERRIDE {
-            fMatrixHandle = builder->addUniform(GrGLShaderBuilder::kFragment_Visibility,
+            fMatrixHandle = builder->addUniform(GrGLProgramBuilder::kFragment_Visibility,
                                                 kMat44f_GrSLType,
                                                 "ColorMatrix");
-            fVectorHandle = builder->addUniform(GrGLShaderBuilder::kFragment_Visibility,
+            fVectorHandle = builder->addUniform(GrGLProgramBuilder::kFragment_Visibility,
                                                 kVec4f_GrSLType,
                                                 "ColorMatrixVector");
 
@@ -416,16 +424,17 @@ public:
                 // could optimize this case, but we aren't for now.
                 inputColor = "vec4(1)";
             }
+            GrGLFragmentShaderBuilder* fsBuilder = builder->getFragmentShaderBuilder();
             // The max() is to guard against 0 / 0 during unpremul when the incoming color is
             // transparent black.
-            builder->fsCodeAppendf("\tfloat nonZeroAlpha = max(%s.a, 0.00001);\n", inputColor);
-            builder->fsCodeAppendf("\t%s = %s * vec4(%s.rgb / nonZeroAlpha, nonZeroAlpha) + %s;\n",
+            fsBuilder->codeAppendf("\tfloat nonZeroAlpha = max(%s.a, 0.00001);\n", inputColor);
+            fsBuilder->codeAppendf("\t%s = %s * vec4(%s.rgb / nonZeroAlpha, nonZeroAlpha) + %s;\n",
                                    outputColor,
                                    builder->getUniformCStr(fMatrixHandle),
                                    inputColor,
                                    builder->getUniformCStr(fVectorHandle));
-            builder->fsCodeAppendf("\t%s = clamp(%s, 0.0, 1.0);\n", outputColor, outputColor);
-            builder->fsCodeAppendf("\t%s.rgb *= %s.a;\n", outputColor, outputColor);
+            fsBuilder->codeAppendf("\t%s = clamp(%s, 0.0, 1.0);\n", outputColor, outputColor);
+            fsBuilder->codeAppendf("\t%s.rgb *= %s.a;\n", outputColor, outputColor);
         }
 
         virtual void setData(const GrGLProgramDataManager& uniManager,

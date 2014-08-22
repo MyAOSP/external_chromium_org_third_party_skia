@@ -61,7 +61,9 @@ public:
     };
 
 protected:
+#ifdef SK_SUPPORT_LEGACY_DEEPFLATTENING
     SkTable_ColorFilter(SkReadBuffer& buffer);
+#endif
     virtual void flatten(SkWriteBuffer&) const SK_OVERRIDE;
 
 private:
@@ -69,6 +71,8 @@ private:
 
     uint8_t fStorage[256 * 4];
     unsigned fFlags;
+
+    friend class SkTableColorFilter;
 
     typedef SkColorFilter INHERITED;
 };
@@ -168,19 +172,62 @@ static const uint8_t gCountNibBits[] = {
 #include "SkPackBits.h"
 
 void SkTable_ColorFilter::flatten(SkWriteBuffer& buffer) const {
-    this->INHERITED::flatten(buffer);
-
     uint8_t storage[5*256];
     int count = gCountNibBits[fFlags & 0xF];
     size_t size = SkPackBits::Pack8(fStorage, count * 256, storage);
     SkASSERT(size <= sizeof(storage));
 
-//    SkDebugf("raw %d packed %d\n", count * 256, size);
-
-    buffer.writeInt(fFlags);
+    buffer.write32(fFlags);
     buffer.writeByteArray(storage, size);
 }
 
+SkFlattenable* SkTable_ColorFilter::CreateProc(SkReadBuffer& buffer) {
+    const int flags = buffer.read32();
+    const size_t count = gCountNibBits[flags & 0xF];
+    SkASSERT(count <= 4);
+
+    uint8_t packedStorage[5*256];
+    size_t packedSize = buffer.getArrayCount();
+    if (!buffer.validate(packedSize <= sizeof(packedStorage))) {
+        return NULL;
+    }
+    if (!buffer.readByteArray(packedStorage, packedSize)) {
+        return NULL;
+    }
+
+    uint8_t unpackedStorage[4*256];
+    size_t unpackedSize = SkPackBits::Unpack8(packedStorage, packedSize, unpackedStorage);
+    // now check that we got the size we expected
+    if (!buffer.validate(unpackedSize != count*256)) {
+        return NULL;
+    }
+
+    const uint8_t* a = NULL;
+    const uint8_t* r = NULL;
+    const uint8_t* g = NULL;
+    const uint8_t* b = NULL;
+    const uint8_t* ptr = unpackedStorage;
+
+    if (flags & kA_Flag) {
+        a = ptr;
+        ptr += 256;
+    }
+    if (flags & kR_Flag) {
+        r = ptr;
+        ptr += 256;
+    }
+    if (flags & kG_Flag) {
+        g = ptr;
+        ptr += 256;
+    }
+    if (flags & kB_Flag) {
+        b = ptr;
+        ptr += 256;
+    }
+    return SkTableColorFilter::CreateARGB(a, r, g, b);
+}
+
+#ifdef SK_SUPPORT_LEGACY_DEEPFLATTENING
 SkTable_ColorFilter::SkTable_ColorFilter(SkReadBuffer& buffer) : INHERITED(buffer) {
     fBitmap = NULL;
 
@@ -199,6 +246,7 @@ SkTable_ColorFilter::SkTable_ColorFilter(SkReadBuffer& buffer) : INHERITED(buffe
     SkDEBUGCODE(size_t count = gCountNibBits[fFlags & 0xF]);
     SkASSERT(raw == count * 256);
 }
+#endif
 
 bool SkTable_ColorFilter::asComponentTable(SkBitmap* table) const {
     if (table) {
@@ -230,7 +278,7 @@ bool SkTable_ColorFilter::asComponentTable(SkBitmap* table) const {
 #include "GrEffect.h"
 #include "GrTBackendEffectFactory.h"
 #include "gl/GrGLEffect.h"
-#include "gl/GrGLShaderBuilder.h"
+#include "gl/builders/GrGLProgramBuilder.h"
 #include "SkGr.h"
 
 class GLColorTableEffect;
@@ -268,7 +316,7 @@ class GLColorTableEffect : public GrGLEffect {
 public:
     GLColorTableEffect(const GrBackendEffectFactory&, const GrDrawEffect&);
 
-    virtual void emitCode(GrGLShaderBuilder*,
+    virtual void emitCode(GrGLProgramBuilder*,
                           const GrDrawEffect&,
                           const GrEffectKey&,
                           const char* outputColor,
@@ -289,7 +337,7 @@ GLColorTableEffect::GLColorTableEffect(const GrBackendEffectFactory& factory, co
     : INHERITED(factory) {
  }
 
-void GLColorTableEffect::emitCode(GrGLShaderBuilder* builder,
+void GLColorTableEffect::emitCode(GrGLProgramBuilder* builder,
                                   const GrDrawEffect&,
                                   const GrEffectKey&,
                                   const char* outputColor,
@@ -299,38 +347,39 @@ void GLColorTableEffect::emitCode(GrGLShaderBuilder* builder,
 
     static const float kColorScaleFactor = 255.0f / 256.0f;
     static const float kColorOffsetFactor = 1.0f / 512.0f;
+    GrGLFragmentShaderBuilder* fsBuilder = builder->getFragmentShaderBuilder();
     if (NULL == inputColor) {
         // the input color is solid white (all ones).
         static const float kMaxValue = kColorScaleFactor + kColorOffsetFactor;
-        builder->fsCodeAppendf("\t\tvec4 coord = vec4(%f, %f, %f, %f);\n",
+        fsBuilder->codeAppendf("\t\tvec4 coord = vec4(%f, %f, %f, %f);\n",
                                kMaxValue, kMaxValue, kMaxValue, kMaxValue);
 
     } else {
-        builder->fsCodeAppendf("\t\tfloat nonZeroAlpha = max(%s.a, .0001);\n", inputColor);
-        builder->fsCodeAppendf("\t\tvec4 coord = vec4(%s.rgb / nonZeroAlpha, nonZeroAlpha);\n", inputColor);
-        builder->fsCodeAppendf("\t\tcoord = coord * %f + vec4(%f, %f, %f, %f);\n",
+        fsBuilder->codeAppendf("\t\tfloat nonZeroAlpha = max(%s.a, .0001);\n", inputColor);
+        fsBuilder->codeAppendf("\t\tvec4 coord = vec4(%s.rgb / nonZeroAlpha, nonZeroAlpha);\n", inputColor);
+        fsBuilder->codeAppendf("\t\tcoord = coord * %f + vec4(%f, %f, %f, %f);\n",
                               kColorScaleFactor,
                               kColorOffsetFactor, kColorOffsetFactor,
                               kColorOffsetFactor, kColorOffsetFactor);
     }
 
-    builder->fsCodeAppendf("\t\t%s.a = ", outputColor);
-    builder->fsAppendTextureLookup(samplers[0], "vec2(coord.a, 0.125)");
-    builder->fsCodeAppend(";\n");
+    fsBuilder->codeAppendf("\t\t%s.a = ", outputColor);
+    fsBuilder->appendTextureLookup(samplers[0], "vec2(coord.a, 0.125)");
+    fsBuilder->codeAppend(";\n");
 
-    builder->fsCodeAppendf("\t\t%s.r = ", outputColor);
-    builder->fsAppendTextureLookup(samplers[0], "vec2(coord.r, 0.375)");
-    builder->fsCodeAppend(";\n");
+    fsBuilder->codeAppendf("\t\t%s.r = ", outputColor);
+    fsBuilder->appendTextureLookup(samplers[0], "vec2(coord.r, 0.375)");
+    fsBuilder->codeAppend(";\n");
 
-    builder->fsCodeAppendf("\t\t%s.g = ", outputColor);
-    builder->fsAppendTextureLookup(samplers[0], "vec2(coord.g, 0.625)");
-    builder->fsCodeAppend(";\n");
+    fsBuilder->codeAppendf("\t\t%s.g = ", outputColor);
+    fsBuilder->appendTextureLookup(samplers[0], "vec2(coord.g, 0.625)");
+    fsBuilder->codeAppend(";\n");
 
-    builder->fsCodeAppendf("\t\t%s.b = ", outputColor);
-    builder->fsAppendTextureLookup(samplers[0], "vec2(coord.b, 0.875)");
-    builder->fsCodeAppend(";\n");
+    fsBuilder->codeAppendf("\t\t%s.b = ", outputColor);
+    fsBuilder->appendTextureLookup(samplers[0], "vec2(coord.b, 0.875)");
+    fsBuilder->codeAppend(";\n");
 
-    builder->fsCodeAppendf("\t\t%s.rgb *= %s.a;\n", outputColor, outputColor);
+    fsBuilder->codeAppendf("\t\t%s.rgb *= %s.a;\n", outputColor, outputColor);
 }
 
 ///////////////////////////////////////////////////////////////////////////////

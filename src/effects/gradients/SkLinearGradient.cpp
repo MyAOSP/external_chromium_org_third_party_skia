@@ -60,10 +60,24 @@ SkLinearGradient::SkLinearGradient(const SkPoint pts[2], const Descriptor& desc)
     pts_to_unit_matrix(pts, &fPtsToUnit);
 }
 
+#ifdef SK_SUPPORT_LEGACY_DEEPFLATTENING
 SkLinearGradient::SkLinearGradient(SkReadBuffer& buffer)
     : INHERITED(buffer)
     , fStart(buffer.readPoint())
     , fEnd(buffer.readPoint()) {
+}
+#endif
+
+SkFlattenable* SkLinearGradient::CreateProc(SkReadBuffer& buffer) {
+    DescriptorScope desc;
+    if (!desc.unflatten(buffer)) {
+        return NULL;
+    }
+    SkPoint pts[2];
+    pts[0] = buffer.readPoint();
+    pts[1] = buffer.readPoint();
+    return SkGradientShader::CreateLinear(pts, desc.fColors, desc.fPos, desc.fCount,
+                                          desc.fTileMode, desc.fGradFlags, desc.fLocalMatrix);
 }
 
 void SkLinearGradient::flatten(SkWriteBuffer& buffer) const {
@@ -446,7 +460,7 @@ void SkLinearGradient::LinearGradientContext::shadeSpan16(int x, int y,
 #if SK_SUPPORT_GPU
 
 #include "GrTBackendEffectFactory.h"
-#include "gl/GrGLShaderBuilder.h"
+#include "gl/builders/GrGLProgramBuilder.h"
 #include "SkGr.h"
 
 /////////////////////////////////////////////////////////////////////
@@ -459,7 +473,7 @@ public:
 
     virtual ~GrGLLinearGradient() { }
 
-    virtual void emitCode(GrGLShaderBuilder*,
+    virtual void emitCode(GrGLProgramBuilder*,
                           const GrDrawEffect&,
                           const GrEffectKey&,
                           const char* outputColor,
@@ -536,7 +550,7 @@ GrEffect* GrLinearGradient::TestCreate(SkRandom* random,
 
 /////////////////////////////////////////////////////////////////////
 
-void GrGLLinearGradient::emitCode(GrGLShaderBuilder* builder,
+void GrGLLinearGradient::emitCode(GrGLProgramBuilder* builder,
                                   const GrDrawEffect&,
                                   const GrEffectKey& key,
                                   const char* outputColor,
@@ -545,7 +559,7 @@ void GrGLLinearGradient::emitCode(GrGLShaderBuilder* builder,
                                   const TextureSamplerArray& samplers) {
     uint32_t baseKey = key.get32(0);
     this->emitUniforms(builder, baseKey);
-    SkString t = builder->ensureFSCoords2D(coords, 0);
+    SkString t = builder->getFragmentShaderBuilder()->ensureFSCoords2D(coords, 0);
     t.append(".x");
     this->emitColor(builder, t.c_str(), baseKey, outputColor, inputColor, samplers);
 }

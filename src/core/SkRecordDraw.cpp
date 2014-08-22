@@ -89,6 +89,7 @@ DRAW(DrawRRect, drawRRect(r.rrect, r.paint));
 DRAW(DrawRect, drawRect(r.rect, r.paint));
 DRAW(DrawSprite, drawSprite(shallow_copy(r.bitmap), r.left, r.top, r.paint));
 DRAW(DrawText, drawText(r.text, r.byteLength, r.x, r.y, r.paint));
+DRAW(DrawTextBlob, drawTextBlob(r.blob, r.x, r.y, r.paint));
 DRAW(DrawTextOnPath, drawTextOnPath(r.text, r.byteLength, r.path, r.matrix, r.paint));
 DRAW(DrawVertices, drawVertices(r.vmode, r.vertexCount, r.vertices, r.texs, r.colors,
                                 r.xmode.get(), r.indices, r.indexCount, r.paint));
@@ -203,19 +204,29 @@ private:
         this->pushControl();
     }
 
+    static bool PaintMayAffectTransparentBlack(const SkPaint* paint) {
+        // FIXME: this is very conservative
+        return paint && (paint->getImageFilter() || paint->getColorFilter());
+    }
+
     SkIRect popSaveBlock() {
         // We're done the Save block.  Apply the block's bounds to all control ops inside it.
         SaveBounds sb;
         fSaveStack.pop(&sb);
+
+        // If the paint affects transparent black, we can't trust any of our calculated bounds.
+        const SkIRect& bounds =
+            PaintMayAffectTransparentBlack(sb.paint) ? fCurrentClipBounds : sb.bounds;
+
         while (sb.controlOps --> 0) {
-            this->popControl(sb.bounds);
+            this->popControl(bounds);
         }
 
         // This whole Save block may be part another Save block.
-        this->updateSaveBounds(sb.bounds);
+        this->updateSaveBounds(bounds);
 
         // If called from a real Restore (not a phony one for balance), it'll need the bounds.
-        return sb.bounds;
+        return bounds;
     }
 
     void pushControl() {
@@ -315,7 +326,7 @@ private:
 #ifdef SK_DEBUG
         SkRect correct = *rect;
 #endif
-        const SkScalar yPad = 1.5f * paint.getTextSize(),  // In practice, this seems to be enough.
+        const SkScalar yPad = 2.0f * paint.getTextSize(),  // In practice, this seems to be enough.
                        xPad = 4.0f * yPad;                 // Hack for very wide Github logo font.
         rect->outset(xPad, yPad);
 #ifdef SK_DEBUG
@@ -325,7 +336,9 @@ private:
         correct.fTop    += metrics.fTop;
         correct.fRight  += metrics.fXMax;
         correct.fBottom += metrics.fBottom;
-        SkASSERTF(rect->contains(correct), "%f %f %f %f vs. %f %f %f %f\n",
+        // See skia:2862 for why we ignore small text sizes.
+        SkASSERTF(paint.getTextSize() < 0.001f || rect->contains(correct),
+                  "%f %f %f %f vs. %f %f %f %f\n",
                   -xPad, -yPad, +xPad, +yPad,
                   metrics.fXMin, metrics.fTop, metrics.fXMax, metrics.fBottom);
 #endif

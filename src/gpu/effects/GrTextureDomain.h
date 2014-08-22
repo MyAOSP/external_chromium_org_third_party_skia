@@ -11,6 +11,7 @@
 #include "GrSingleTextureEffect.h"
 #include "gl/GrGLEffect.h"
 
+class GrGLProgramBuilder;
 class GrGLShaderBuilder;
 struct SkRect;
 
@@ -68,7 +69,7 @@ public:
     }
 
     bool operator== (const GrTextureDomain& that) const {
-        return fMode == that.fMode && fDomain == that.fDomain;
+        return fMode == that.fMode && (kIgnore_Mode == fMode || fDomain == that.fDomain);
     }
 
     /**

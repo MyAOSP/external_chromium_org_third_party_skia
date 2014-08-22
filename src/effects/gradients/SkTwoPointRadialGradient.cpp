@@ -343,8 +343,8 @@ void SkTwoPointRadialGradient::toString(SkString* str) const {
 }
 #endif
 
-SkTwoPointRadialGradient::SkTwoPointRadialGradient(
-    SkReadBuffer& buffer)
+#ifdef SK_SUPPORT_LEGACY_DEEPFLATTENING
+SkTwoPointRadialGradient::SkTwoPointRadialGradient(SkReadBuffer& buffer)
     : INHERITED(buffer),
       fCenter1(buffer.readPoint()),
       fCenter2(buffer.readPoint()),
@@ -352,6 +352,21 @@ SkTwoPointRadialGradient::SkTwoPointRadialGradient(
       fRadius2(buffer.readScalar()) {
     init();
 };
+#endif
+
+SkFlattenable* SkTwoPointRadialGradient::CreateProc(SkReadBuffer& buffer) {
+    DescriptorScope desc;
+    if (!desc.unflatten(buffer)) {
+        return NULL;
+    }
+    const SkPoint c1 = buffer.readPoint();
+    const SkPoint c2 = buffer.readPoint();
+    const SkScalar r1 = buffer.readScalar();
+    const SkScalar r2 = buffer.readScalar();
+    return SkGradientShader::CreateTwoPointRadial(c1, r1, c2, r2, desc.fColors, desc.fPos,
+                                                  desc.fCount, desc.fTileMode, desc.fGradFlags,
+                                                  desc.fLocalMatrix);
+}
 
 void SkTwoPointRadialGradient::flatten(
     SkWriteBuffer& buffer) const {
@@ -383,7 +398,7 @@ void SkTwoPointRadialGradient::init() {
 #if SK_SUPPORT_GPU
 
 #include "GrTBackendEffectFactory.h"
-#include "gl/GrGLShaderBuilder.h"
+#include "gl/builders/GrGLProgramBuilder.h"
 #include "SkGr.h"
 
 // For brevity
@@ -396,7 +411,7 @@ public:
     GrGLRadial2Gradient(const GrBackendEffectFactory& factory, const GrDrawEffect&);
     virtual ~GrGLRadial2Gradient() { }
 
-    virtual void emitCode(GrGLShaderBuilder*,
+    virtual void emitCode(GrGLProgramBuilder*,
                           const GrDrawEffect&,
                           const GrEffectKey&,
                           const char* outputColor,
@@ -552,7 +567,7 @@ GrGLRadial2Gradient::GrGLRadial2Gradient(const GrBackendEffectFactory& factory,
     fIsDegenerate = data.isDegenerate();
 }
 
-void GrGLRadial2Gradient::emitCode(GrGLShaderBuilder* builder,
+void GrGLRadial2Gradient::emitCode(GrGLProgramBuilder* builder,
                                    const GrDrawEffect& drawEffect,
                                    const GrEffectKey& key,
                                    const char* outputColor,
@@ -561,7 +576,7 @@ void GrGLRadial2Gradient::emitCode(GrGLShaderBuilder* builder,
                                    const TextureSamplerArray& samplers) {
     uint32_t baseKey = key.get32(0);
     this->emitUniforms(builder, baseKey);
-    fParamUni = builder->addUniformArray(GrGLShaderBuilder::kFragment_Visibility,
+    fParamUni = builder->addUniformArray(GrGLProgramBuilder::kFragment_Visibility,
                                          kFloat_GrSLType, "Radial2FSParams", 6);
 
     SkString cName("c");
@@ -581,12 +596,13 @@ void GrGLRadial2Gradient::emitCode(GrGLShaderBuilder* builder,
     builder->getUniformVariable(fParamUni).appendArrayAccess(4, &p4);
     builder->getUniformVariable(fParamUni).appendArrayAccess(5, &p5);
 
+    GrGLFragmentShaderBuilder* fsBuilder = builder->getFragmentShaderBuilder();
     // We interpolate the linear component in coords[1].
     SkASSERT(coords[0].type() == coords[1].type());
     const char* coords2D;
     SkString bVar;
     if (kVec3f_GrSLType == coords[0].type()) {
-        builder->fsCodeAppendf("\tvec3 interpolants = vec3(%s.xy, %s.x) / %s.z;\n",
+        fsBuilder->codeAppendf("\tvec3 interpolants = vec3(%s.xy, %s.x) / %s.z;\n",
                                coords[0].c_str(), coords[1].c_str(), coords[0].c_str());
         coords2D = "interpolants.xy";
         bVar = "interpolants.z";
@@ -596,7 +612,7 @@ void GrGLRadial2Gradient::emitCode(GrGLShaderBuilder* builder,
     }
 
     // c = (x^2)+(y^2) - params[4]
-    builder->fsCodeAppendf("\tfloat %s = dot(%s, %s) - %s;\n",
+    fsBuilder->codeAppendf("\tfloat %s = dot(%s, %s) - %s;\n",
                            cName.c_str(), coords2D, coords2D, p4.c_str());
 
     // If we aren't degenerate, emit some extra code, and accept a slightly
@@ -604,13 +620,13 @@ void GrGLRadial2Gradient::emitCode(GrGLShaderBuilder* builder,
     if (!fIsDegenerate) {
 
         // ac4 = 4.0 * params[0] * c
-        builder->fsCodeAppendf("\tfloat %s = %s * 4.0 * %s;\n",
+        fsBuilder->codeAppendf("\tfloat %s = %s * 4.0 * %s;\n",
                                ac4Name.c_str(), p0.c_str(),
                                cName.c_str());
 
         // root = sqrt(b^2-4ac)
         // (abs to avoid exception due to fp precision)
-        builder->fsCodeAppendf("\tfloat %s = sqrt(abs(%s*%s - %s));\n",
+        fsBuilder->codeAppendf("\tfloat %s = sqrt(abs(%s*%s - %s));\n",
                                rootName.c_str(), bVar.c_str(), bVar.c_str(),
                                ac4Name.c_str());
 

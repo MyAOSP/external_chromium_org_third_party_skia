@@ -580,7 +580,7 @@ static void test_gatherpixelrefs(skiatest::Reporter* reporter) {
 
 #define GENERATE_CANVAS(recorder, x) \
     (x) ? recorder.EXPERIMENTAL_beginRecording(100, 100) \
-        : recorder.beginRecording(100,100);
+        : recorder.  DEPRECATED_beginRecording(100,100);
 
 /* Hit a few SkPicture::Analysis cases not handled elsewhere. */
 static void test_analysis(skiatest::Reporter* reporter, bool useNewPath) {
@@ -843,6 +843,17 @@ static void test_gpu_veto(skiatest::Reporter* reporter,
     picture.reset(recorder.endRecording());
     // ... but only when applied to drawPoint() calls
     REPORTER_ASSERT(reporter, !picture->suitableForGpuRasterization(NULL));
+
+    // Nest the previous picture inside a new one.
+    // This doesn't work in the old backend.
+    if (useNewPath) {
+        canvas = GENERATE_CANVAS(recorder, useNewPath);
+        {
+            canvas->drawPicture(picture.get());
+        }
+        picture.reset(recorder.endRecording());
+        REPORTER_ASSERT(reporter, !picture->suitableForGpuRasterization(NULL));
+    }
 }
 
 #undef GENERATE_CANVAS
@@ -886,7 +897,7 @@ static void test_gpu_picture_optimization(skiatest::Reporter* reporter,
         {
             SkPictureRecorder recorder;
 
-            SkCanvas* c = recorder.beginRecording(kWidth, kHeight);
+            SkCanvas* c = recorder.DEPRECATED_beginRecording(kWidth, kHeight);
             // 1)
             c->saveLayer(NULL, NULL);
             c->restore();
@@ -991,7 +1002,7 @@ static void test_gpu_picture_optimization(skiatest::Reporter* reporter,
 static void test_has_text(skiatest::Reporter* reporter, bool useNewPath) {
     SkPictureRecorder recorder;
 #define BEGIN_RECORDING useNewPath ? recorder.EXPERIMENTAL_beginRecording(100, 100) \
-                                   : recorder.             beginRecording(100, 100)
+                                   : recorder.  DEPRECATED_beginRecording(100, 100)
 
     SkCanvas* canvas = BEGIN_RECORDING;
     {
@@ -1043,6 +1054,17 @@ static void test_has_text(skiatest::Reporter* reporter, bool useNewPath) {
     }
     picture.reset(recorder.endRecording());
     REPORTER_ASSERT(reporter, picture->hasText());
+
+    // Nest the previous picture inside a new one.
+    // This doesn't work in the old backend.
+    if (useNewPath) {
+        canvas = BEGIN_RECORDING;
+        {
+            canvas->drawPicture(picture.get());
+        }
+        picture.reset(recorder.endRecording());
+        REPORTER_ASSERT(reporter, picture->hasText());
+    }
 #undef BEGIN_RECORDING
 }
 

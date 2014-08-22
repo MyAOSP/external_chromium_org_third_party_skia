@@ -6,6 +6,7 @@
     'SK_SUPPORT_GPU=<(skia_gpu)',
     'SK_SUPPORT_OPENCL=<(skia_opencl)',
     'SK_FORCE_DISTANCEFIELD_FONTS=<(skia_force_distancefield_fonts)',
+    'SK_PICTURE_USE_SK_RECORD',
   ],
   'conditions' : [
     ['skia_pic', {
@@ -25,11 +26,6 @@
        ],
       }],
      ],
-    }],
-    [ 'skia_arch_type == "arm64"', {
-      'cflags': [
-        '-ffp-contract=off',
-      ],
     }],
 
     # As of M35, Chrome requires SSE2 on x86 (and SSSE3 on Mac).
