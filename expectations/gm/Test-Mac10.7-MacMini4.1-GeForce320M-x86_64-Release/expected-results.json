@@ -9022,7 +9022,7 @@
       "allowed-digests": [
         [
           "bitmap-64bitMD5", 
-          9717382431408247757
+          15758701092535531601
         ]
       ], 
       "ignore-failure": false, 
@@ -9032,7 +9032,7 @@
       "allowed-digests": [
         [
           "bitmap-64bitMD5", 
-          17465630610251176417
+          13279639801687685261
         ]
       ], 
       "ignore-failure": false, 
@@ -9042,7 +9042,7 @@
       "allowed-digests": [
         [
           "bitmap-64bitMD5", 
-          9493505356907239504
+          6462892377598795803
         ]
       ], 
       "ignore-failure": false, 
@@ -10274,7 +10274,7 @@
       "allowed-digests": [
         [
           "bitmap-64bitMD5", 
-          3286735716127700599
+          434632923319141574
         ]
       ], 
       "ignore-failure": false, 
@@ -10284,7 +10284,7 @@
       "allowed-digests": [
         [
           "bitmap-64bitMD5", 
-          16780787446185472833
+          6610148046456183203
         ]
       ], 
       "ignore-failure": false, 
@@ -10294,7 +10294,7 @@
       "allowed-digests": [
         [
           "bitmap-64bitMD5", 
-          3903869198734994636
+          8476248732632152119
         ]
       ], 
       "ignore-failure": false, 
@@ -10313,7 +10313,7 @@
       "allowed-digests": [
         [
           "bitmap-64bitMD5", 
-          16406204735946722431
+          5940994834242943779
         ]
       ], 
       "ignore-failure": false, 
@@ -13988,6 +13988,42 @@
         1578
       ], 
       "reviewed-by-human": false
+    }, 
+    "textblob_565.png": {
+      "allowed-digests": [
+        [
+          "bitmap-64bitMD5", 
+          8718399483693317552
+        ]
+      ], 
+      "reviewed-by-human": true
+    }, 
+    "textblob_8888.png": {
+      "allowed-digests": [
+        [
+          "bitmap-64bitMD5", 
+          15261396687979112539
+        ]
+      ], 
+      "reviewed-by-human": true
+    }, 
+    "textblob_gpu.png": {
+      "allowed-digests": [
+        [
+          "bitmap-64bitMD5", 
+          4021846267976934275
+        ]
+      ], 
+      "reviewed-by-human": true
+    }, 
+    "textblob_pdf-mac.png": {
+      "allowed-digests": [
+        [
+          "bitmap-64bitMD5", 
+          15999892150934755145
+        ]
+      ], 
+      "reviewed-by-human": true
     }, 
     "texteffects_565.png": {
       "allowed-digests": [

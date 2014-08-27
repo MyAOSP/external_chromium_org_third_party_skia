@@ -186,17 +186,6 @@ public:
                            SkBitmap* result, SkIPoint* offset) const;
 #endif
 
-    /**
-     *  Set an external cache to be used for all image filter processing. This
-     *  will replace the default intra-frame cache.
-     */
-    static void SetExternalCache(Cache* cache);
-
-    /**
-     *  Returns the currently-set external cache, or NULL if none is set.
-     */
-    static Cache* GetExternalCache();
-
     SK_DEFINE_FLATTENABLE_TYPE(SkImageFilter)
 
 protected:
@@ -237,7 +226,7 @@ protected:
         void allocInputs(int count);
     };
 
-    SkImageFilter(int inputCount, SkImageFilter** inputs, const CropRect* cropRect = NULL);
+    SkImageFilter(int inputCount, SkImageFilter** inputs, const CropRect* cropRect = NULL, uint32_t uniqueID = 0);
 
     virtual ~SkImageFilter();
 

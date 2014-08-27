@@ -38,16 +38,16 @@ SkBlurImageFilter::SkBlurImageFilter(SkReadBuffer& buffer)
 SkBlurImageFilter::SkBlurImageFilter(SkScalar sigmaX,
                                      SkScalar sigmaY,
                                      SkImageFilter* input,
-                                     const CropRect* cropRect)
-    : INHERITED(1, &input, cropRect), fSigma(SkSize::Make(sigmaX, sigmaY)) {
-    SkASSERT(sigmaX >= 0 && sigmaY >= 0);
+                                     const CropRect* cropRect,
+                                     uint32_t uniqueID)
+    : INHERITED(1, &input, cropRect, uniqueID), fSigma(SkSize::Make(sigmaX, sigmaY)) {
 }
 
 SkFlattenable* SkBlurImageFilter::CreateProc(SkReadBuffer& buffer) {
     SK_IMAGEFILTER_UNFLATTEN_COMMON(common, 1);
     SkScalar sigmaX = buffer.readScalar();
     SkScalar sigmaY = buffer.readScalar();
-    return Create(sigmaX, sigmaY, common.getInput(0), &common.cropRect());
+    return Create(sigmaX, sigmaY, common.getInput(0), &common.cropRect(), common.uniqueID());
 }
 
 void SkBlurImageFilter::flatten(SkWriteBuffer& buffer) const {
@@ -253,13 +253,13 @@ void SkBlurImageFilter::computeFastBounds(const SkRect& src, SkRect* dst) const 
 bool SkBlurImageFilter::onFilterBounds(const SkIRect& src, const SkMatrix& ctm,
                                        SkIRect* dst) const {
     SkIRect bounds = src;
-    if (getInput(0) && !getInput(0)->filterBounds(src, ctm, &bounds)) {
-        return false;
-    }
     SkVector sigma = SkVector::Make(fSigma.width(), fSigma.height());
     ctm.mapVectors(&sigma, 1);
     bounds.outset(SkScalarCeilToInt(SkScalarMul(sigma.x(), SkIntToScalar(3))),
                   SkScalarCeilToInt(SkScalarMul(sigma.y(), SkIntToScalar(3))));
+    if (getInput(0) && !getInput(0)->filterBounds(bounds, ctm, &bounds)) {
+        return false;
+    }
     *dst = bounds;
     return true;
 }

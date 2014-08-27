@@ -9345,7 +9345,7 @@
       "allowed-digests": [
         [
           "bitmap-64bitMD5", 
-          14241394273706423946
+          9833133577951959237
         ]
       ], 
       "ignore-failure": false, 
@@ -10567,7 +10567,7 @@
       "allowed-digests": [
         [
           "bitmap-64bitMD5", 
-          15164454502421138581
+          8299715471717602450
         ]
       ], 
       "ignore-failure": false, 
@@ -14327,6 +14327,15 @@
         1578
       ], 
       "reviewed-by-human": false
+    }, 
+    "textblob_angle.png": {
+      "allowed-digests": [
+        [
+          "bitmap-64bitMD5", 
+          8450106420219141611
+        ]
+      ], 
+      "reviewed-by-human": true
     }, 
     "texteffects_565.png": {
       "allowed-digests": [
