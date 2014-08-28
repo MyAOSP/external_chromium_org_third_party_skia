@@ -15,7 +15,6 @@
 #include "SkDeviceImageFilterProxy.h"
 #include "SkDisplacementMapEffect.h"
 #include "SkDropShadowImageFilter.h"
-#include "SkFlattenableBuffers.h"
 #include "SkFlattenableSerialization.h"
 #include "SkGradientShader.h"
 #include "SkLightingImageFilter.h"
@@ -27,6 +26,7 @@
 #include "SkPicture.h"
 #include "SkPictureImageFilter.h"
 #include "SkPictureRecorder.h"
+#include "SkReadBuffer.h"
 #include "SkRect.h"
 #include "SkTileImageFilter.h"
 #include "SkXfermodeImageFilter.h"
@@ -56,12 +56,15 @@ public:
     SK_DECLARE_PUBLIC_FLATTENABLE_DESERIALIZATION_PROCS(MatrixTestImageFilter)
 
 protected:
+#ifdef SK_SUPPORT_LEGACY_DEEPFLATTENING
     explicit MatrixTestImageFilter(SkReadBuffer& buffer) : SkImageFilter(0, NULL) {
         fReporter = static_cast<skiatest::Reporter*>(buffer.readFunctionPtr());
         buffer.readMatrix(&fExpectedMatrix);
     }
+#endif
 
     virtual void flatten(SkWriteBuffer& buffer) const SK_OVERRIDE {
+        this->INHERITED::flatten(buffer);
         buffer.writeFunctionPtr(fReporter);
         buffer.writeMatrix(fExpectedMatrix);
     }
@@ -69,8 +72,18 @@ protected:
 private:
     skiatest::Reporter* fReporter;
     SkMatrix fExpectedMatrix;
+    
+    typedef SkImageFilter INHERITED;
 };
 
+}
+
+SkFlattenable* MatrixTestImageFilter::CreateProc(SkReadBuffer& buffer) {
+    SK_IMAGEFILTER_UNFLATTEN_COMMON(common, 1);
+    skiatest::Reporter* reporter = (skiatest::Reporter*)buffer.readFunctionPtr();
+    SkMatrix matrix;
+    buffer.readMatrix(&matrix);
+    return SkNEW_ARGS(MatrixTestImageFilter, (reporter, matrix));
 }
 
 static void make_small_bitmap(SkBitmap& bitmap) {
@@ -405,6 +418,54 @@ DEF_TEST(ImageFilterDrawTiled, reporter) {
 
     for (size_t i = 0; i < SK_ARRAY_COUNT(filters); ++i) {
         SkSafeUnref(filters[i].fFilter);
+    }
+}
+
+static void drawSaveLayerPicture(int width, int height, int tileSize, SkBBHFactory* factory, SkBitmap* result) {
+
+    SkMatrix matrix;
+    matrix.setTranslate(SkIntToScalar(50), 0);
+
+    SkAutoTUnref<SkColorFilter> cf(SkColorFilter::CreateModeFilter(SK_ColorWHITE, SkXfermode::kSrc_Mode));
+    SkAutoTUnref<SkImageFilter> cfif(SkColorFilterImageFilter::Create(cf.get()));
+    SkAutoTUnref<SkImageFilter> imageFilter(SkMatrixImageFilter::Create(matrix, SkPaint::kNone_FilterLevel, cfif.get()));
+
+    SkPaint paint;
+    paint.setImageFilter(imageFilter.get());
+    SkPictureRecorder recorder;
+    SkRect bounds = SkRect::Make(SkIRect::MakeXYWH(0, 0, 50, 50));
+    SkCanvas* recordingCanvas = recorder.beginRecording(width, height, factory, 0);
+    recordingCanvas->translate(-55, 0);
+    recordingCanvas->saveLayer(&bounds, &paint);
+    recordingCanvas->restore();
+    SkAutoTUnref<SkPicture> picture1(recorder.endRecording());
+
+    result->allocN32Pixels(width, height);
+    SkCanvas canvas(*result);
+    canvas.clear(0);
+    canvas.clipRect(SkRect::Make(SkIRect::MakeWH(tileSize, tileSize)));
+    canvas.drawPicture(picture1.get());
+}
+
+DEF_TEST(ImageFilterDrawMatrixBBH, reporter) {
+    // Check that matrix filter when drawn tiled with BBH exactly
+    // matches the same thing drawn without BBH.
+    // Tests pass by not asserting.
+
+    const int width = 200, height = 200;
+    const int tileSize = 100;
+    SkBitmap result1, result2;
+    SkRTreeFactory factory;
+
+    drawSaveLayerPicture(width, height, tileSize, &factory, &result1);
+    drawSaveLayerPicture(width, height, tileSize, NULL, &result2);
+
+    for (int y = 0; y < height; y++) {
+        int diffs = memcmp(result1.getAddr32(0, y), result2.getAddr32(0, y), result1.rowBytes());
+        REPORTER_ASSERT(reporter, !diffs);
+        if (diffs) {
+            break;
+        }
     }
 }
 

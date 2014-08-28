@@ -204,6 +204,10 @@ public:
      */
     int approximateOpCount() const;
 
+    /** Return true if this picture contains text.
+     */
+    bool hasText() const;
+
 private:
     // V2 : adds SkPixelRef's generation ID.
     // V3 : PictInfo tag at beginning, and EOF tag at the end
@@ -244,7 +248,7 @@ private:
 
     // Only SKPs within the min/current picture version range (inclusive) can be read.
     static const uint32_t MIN_PICTURE_VERSION = 19;
-    static const uint32_t CURRENT_PICTURE_VERSION = 32;
+    static const uint32_t CURRENT_PICTURE_VERSION = 33;
 
     mutable uint32_t      fUniqueID;
 
@@ -298,10 +302,27 @@ private:
 
     // Takes ownership of the SkRecord, refs the (optional) BBH.
     SkPicture(int width, int height, SkRecord*, SkBBoxHierarchy*);
+    // Return as a new SkPicture that's backed by SkRecord.
+    static SkPicture* Forwardport(const SkPicture&);
 
     SkAutoTDelete<SkRecord>       fRecord;
     SkAutoTUnref<SkBBoxHierarchy> fBBH;
-    bool fRecordWillPlayBackBitmaps; // TODO: const
+
+    struct PathCounter;
+
+    struct Analysis {
+        Analysis() {}  // Only used by SkPictureData codepath.
+        explicit Analysis(const SkRecord&);
+
+        bool suitableForGpuRasterization(const char** reason, int sampleCount) const;
+
+        bool        fWillPlaybackBitmaps;
+        bool        fHasText;
+        int         fNumPaintWithPathEffectUses;
+        int         fNumFastPathDashEffects;
+        int         fNumAAConcavePaths;
+        int         fNumAAHairlineConcavePaths;
+    } fAnalysis;
 };
 
 #endif

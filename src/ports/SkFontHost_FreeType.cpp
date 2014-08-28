@@ -953,6 +953,10 @@ SkScalerContext_FreeType::SkScalerContext_FreeType(SkTypeface* typeface,
             case SkPaint::kNormal_Hinting:
                 if (fRec.fFlags & SkScalerContext::kForceAutohinting_Flag) {
                     loadFlags = FT_LOAD_FORCE_AUTOHINT;
+#ifdef SK_BUILD_FOR_ANDROID_FRAMEWORK
+                } else {
+                    loadFlags = FT_LOAD_NO_AUTOHINT;
+#endif
                 }
                 break;
             case SkPaint::kFull_Hinting:
@@ -1503,13 +1507,6 @@ void SkScalerContext_FreeType::emboldenIfNeeded(FT_Face face, FT_GlyphSlot glyph
     if (0 == (fRec.fFlags & SkScalerContext::kEmbolden_Flag)) {
         return;
     }
-
-#if defined(SK_BUILD_FOR_ANDROID_FRAMEWORK)
-    // Android doesn't want to embolden a font that is already bold.
-    if ((fFace->style_flags & FT_STYLE_FLAG_BOLD)) {
-        return;
-    }
-#endif
 
     switch (glyph->format) {
         case FT_GLYPH_FORMAT_OUTLINE:

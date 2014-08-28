@@ -199,17 +199,6 @@ GrGLProgram* GrGpuGL::ProgramCache::getProgram(const GrGLProgramDesc& desc,
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void GrGpuGL::abandonResources(){
-    INHERITED::abandonResources();
-    fProgramCache->abandon();
-    fHWProgramID = 0;
-    if (this->glCaps().pathRenderingSupport()) {
-        fPathRendering->abandonGpuResources();
-    }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 #define GL_CALL(X) GR_GL_CALL(this->glInterface(), X)
 
 bool GrGpuGL::flushGraphicsState(DrawType type, const GrDeviceCoordTexture* dstCopy) {
@@ -222,7 +211,7 @@ bool GrGpuGL::flushGraphicsState(DrawType type, const GrDeviceCoordTexture* dstC
         const GrRenderTarget* rt = this->getDrawState().getRenderTarget();
         SkISize size;
         size.set(rt->width(), rt->height());
-        this->setProjectionMatrix(drawState.getViewMatrix(), size, rt->origin());
+        this->glPathRendering()->setProjectionMatrix(drawState.getViewMatrix(), size, rt->origin());
     } else {
         this->flushMiscFixedFunctionState();
 

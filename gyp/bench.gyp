@@ -12,7 +12,6 @@
         '../gm/gm.cpp',
         '../bench/GMBench.cpp',
         '../bench/SKPBench.cpp',
-        '../bench/ResultsWriter.cpp',
         '../bench/nanobench.cpp',
       ],
       'includes': [
@@ -24,7 +23,15 @@
         'jsoncpp.gyp:jsoncpp',
         'skia_lib.gyp:skia_lib',
         'tools.gyp:crash_handler',
+        'tools.gyp:proc_stats',
         'tools.gyp:timer',
+      ],
+      'conditions': [
+        ['skia_android_framework', {
+          'libraries': [
+            '-lskia',
+          ],
+        }],
       ],
     },
   ],

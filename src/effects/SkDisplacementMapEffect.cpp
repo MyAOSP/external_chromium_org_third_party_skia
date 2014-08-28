@@ -14,7 +14,7 @@
 #include "GrContext.h"
 #include "GrCoordTransform.h"
 #include "gl/GrGLEffect.h"
-#include "gl/GrGLShaderBuilder.h"
+#include "gl/builders/GrGLProgramBuilder.h"
 #include "GrTBackendEffectFactory.h"
 #endif
 
@@ -159,6 +159,22 @@ bool channel_selector_type_is_valid(SkDisplacementMapEffect::ChannelSelectorType
 
 ///////////////////////////////////////////////////////////////////////////////
 
+SkDisplacementMapEffect* SkDisplacementMapEffect::Create(ChannelSelectorType xChannelSelector,
+                                                         ChannelSelectorType yChannelSelector,
+                                                         SkScalar scale,
+                                                         SkImageFilter* displacement,
+                                                         SkImageFilter* color,
+                                                         const CropRect* cropRect) {
+    if (!channel_selector_type_is_valid(xChannelSelector) ||
+        !channel_selector_type_is_valid(yChannelSelector)) {
+        return NULL;
+    }
+
+    SkImageFilter* inputs[2] = { displacement, color };
+    return SkNEW_ARGS(SkDisplacementMapEffect, (xChannelSelector, yChannelSelector, scale,
+                                                inputs, cropRect));
+}
+
 SkDisplacementMapEffect::SkDisplacementMapEffect(ChannelSelectorType xChannelSelector,
                                                  ChannelSelectorType yChannelSelector,
                                                  SkScalar scale,
@@ -174,6 +190,7 @@ SkDisplacementMapEffect::SkDisplacementMapEffect(ChannelSelectorType xChannelSel
 SkDisplacementMapEffect::~SkDisplacementMapEffect() {
 }
 
+#ifdef SK_SUPPORT_LEGACY_DEEPFLATTENING
 SkDisplacementMapEffect::SkDisplacementMapEffect(SkReadBuffer& buffer)
   : INHERITED(2, buffer)
 {
@@ -183,6 +200,15 @@ SkDisplacementMapEffect::SkDisplacementMapEffect(SkReadBuffer& buffer)
     buffer.validate(channel_selector_type_is_valid(fXChannelSelector) &&
                     channel_selector_type_is_valid(fYChannelSelector) &&
                     SkScalarIsFinite(fScale));
+}
+#endif
+
+SkFlattenable* SkDisplacementMapEffect::CreateProc(SkReadBuffer& buffer) {
+    SK_IMAGEFILTER_UNFLATTEN_COMMON(common, 2);
+    ChannelSelectorType xsel = (ChannelSelectorType)buffer.readInt();
+    ChannelSelectorType ysel = (ChannelSelectorType)buffer.readInt();
+    SkScalar scale = buffer.readScalar();
+    return Create(xsel, ysel, scale, common.getInput(0), common.getInput(1), &common.cropRect());
 }
 
 void SkDisplacementMapEffect::flatten(SkWriteBuffer& buffer) const {
@@ -276,7 +302,7 @@ public:
                               const GrDrawEffect& drawEffect);
     virtual ~GrGLDisplacementMapEffect();
 
-    virtual void emitCode(GrGLShaderBuilder*,
+    virtual void emitCode(GrGLProgramBuilder*,
                           const GrDrawEffect&,
                           const GrEffectKey&,
                           const char* outputColor,
@@ -389,6 +415,9 @@ bool SkDisplacementMapEffect::filterImageGPU(Proxy* proxy, const SkBitmap& src, 
     desc.fConfig = kSkia8888_GrPixelConfig;
 
     GrAutoScratchTexture ast(context, desc);
+    if (NULL == ast.texture()) {
+        return false;
+    }
     SkAutoTUnref<GrTexture> dst(ast.detach());
 
     GrContext::AutoRenderTarget art(context, dst->asRenderTarget());
@@ -511,7 +540,7 @@ GrGLDisplacementMapEffect::GrGLDisplacementMapEffect(const GrBackendEffectFactor
 GrGLDisplacementMapEffect::~GrGLDisplacementMapEffect() {
 }
 
-void GrGLDisplacementMapEffect::emitCode(GrGLShaderBuilder* builder,
+void GrGLDisplacementMapEffect::emitCode(GrGLProgramBuilder* builder,
                                          const GrDrawEffect&,
                                          const GrEffectKey& key,
                                          const char* outputColor,
@@ -520,7 +549,7 @@ void GrGLDisplacementMapEffect::emitCode(GrGLShaderBuilder* builder,
                                          const TextureSamplerArray& samplers) {
     sk_ignore_unused_variable(inputColor);
 
-    fScaleUni = builder->addUniform(GrGLShaderBuilder::kFragment_Visibility,
+    fScaleUni = builder->addUniform(GrGLProgramBuilder::kFragment_Visibility,
                                     kVec2f_GrSLType, "Scale");
     const char* scaleUni = builder->getUniformCStr(fScaleUni);
     const char* dColor = "dColor";
@@ -530,29 +559,30 @@ void GrGLDisplacementMapEffect::emitCode(GrGLShaderBuilder* builder,
                                    // a number smaller than that to approximate 0, but
                                    // leave room for 32-bit float GPU rounding errors.
 
-    builder->fsCodeAppendf("\t\tvec4 %s = ", dColor);
-    builder->fsAppendTextureLookup(samplers[0], coords[0].c_str(), coords[0].type());
-    builder->fsCodeAppend(";\n");
+    GrGLFragmentShaderBuilder* fsBuilder = builder->getFragmentShaderBuilder();
+    fsBuilder->codeAppendf("\t\tvec4 %s = ", dColor);
+    fsBuilder->appendTextureLookup(samplers[0], coords[0].c_str(), coords[0].type());
+    fsBuilder->codeAppend(";\n");
 
     // Unpremultiply the displacement
-    builder->fsCodeAppendf("\t\t%s.rgb = (%s.a < %s) ? vec3(0.0) : clamp(%s.rgb / %s.a, 0.0, 1.0);",
+    fsBuilder->codeAppendf("\t\t%s.rgb = (%s.a < %s) ? vec3(0.0) : clamp(%s.rgb / %s.a, 0.0, 1.0);",
                            dColor, dColor, nearZero, dColor, dColor);
 
-    builder->fsCodeAppendf("\t\tvec2 %s = %s + %s*(%s.",
+    fsBuilder->codeAppendf("\t\tvec2 %s = %s + %s*(%s.",
                            cCoords, coords[1].c_str(), scaleUni, dColor);
 
     switch (fXChannelSelector) {
       case SkDisplacementMapEffect::kR_ChannelSelectorType:
-        builder->fsCodeAppend("r");
+        fsBuilder->codeAppend("r");
         break;
       case SkDisplacementMapEffect::kG_ChannelSelectorType:
-        builder->fsCodeAppend("g");
+        fsBuilder->codeAppend("g");
         break;
       case SkDisplacementMapEffect::kB_ChannelSelectorType:
-        builder->fsCodeAppend("b");
+        fsBuilder->codeAppend("b");
         break;
       case SkDisplacementMapEffect::kA_ChannelSelectorType:
-        builder->fsCodeAppend("a");
+        fsBuilder->codeAppend("a");
         break;
       case SkDisplacementMapEffect::kUnknown_ChannelSelectorType:
       default:
@@ -561,31 +591,31 @@ void GrGLDisplacementMapEffect::emitCode(GrGLShaderBuilder* builder,
 
     switch (fYChannelSelector) {
       case SkDisplacementMapEffect::kR_ChannelSelectorType:
-        builder->fsCodeAppend("r");
+        fsBuilder->codeAppend("r");
         break;
       case SkDisplacementMapEffect::kG_ChannelSelectorType:
-        builder->fsCodeAppend("g");
+        fsBuilder->codeAppend("g");
         break;
       case SkDisplacementMapEffect::kB_ChannelSelectorType:
-        builder->fsCodeAppend("b");
+        fsBuilder->codeAppend("b");
         break;
       case SkDisplacementMapEffect::kA_ChannelSelectorType:
-        builder->fsCodeAppend("a");
+        fsBuilder->codeAppend("a");
         break;
       case SkDisplacementMapEffect::kUnknown_ChannelSelectorType:
       default:
         SkDEBUGFAIL("Unknown Y channel selector");
     }
-    builder->fsCodeAppend("-vec2(0.5));\t\t");
+    fsBuilder->codeAppend("-vec2(0.5));\t\t");
 
     // FIXME : This can be achieved with a "clamp to border" texture repeat mode and
     //         a 0 border color instead of computing if cCoords is out of bounds here.
-    builder->fsCodeAppendf(
+    fsBuilder->codeAppendf(
         "bool %s = (%s.x < 0.0) || (%s.y < 0.0) || (%s.x > 1.0) || (%s.y > 1.0);\t\t",
         outOfBounds, cCoords, cCoords, cCoords, cCoords);
-    builder->fsCodeAppendf("%s = %s ? vec4(0.0) : ", outputColor, outOfBounds);
-    builder->fsAppendTextureLookup(samplers[1], cCoords, coords[1].type());
-    builder->fsCodeAppend(";\n");
+    fsBuilder->codeAppendf("%s = %s ? vec4(0.0) : ", outputColor, outOfBounds);
+    fsBuilder->appendTextureLookup(samplers[1], cCoords, coords[1].type());
+    fsBuilder->codeAppend(";\n");
 }
 
 void GrGLDisplacementMapEffect::setData(const GrGLProgramDataManager& pdman,

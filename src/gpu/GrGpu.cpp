@@ -50,18 +50,6 @@ GrGpu::GrGpu(GrContext* context)
 }
 
 GrGpu::~GrGpu() {
-    this->releaseResources();
-}
-
-void GrGpu::abandonResources() {
-
-    fClipMaskManager.releaseResources();
-
-    while (NULL != fObjectList.head()) {
-        fObjectList.head()->abandon();
-    }
-
-    SkASSERT(NULL == fQuadIndexBuffer || fQuadIndexBuffer->wasDestroyed());
     SkSafeSetNull(fQuadIndexBuffer);
     delete fVertexPool;
     fVertexPool = NULL;
@@ -69,42 +57,7 @@ void GrGpu::abandonResources() {
     fIndexPool = NULL;
 }
 
-void GrGpu::releaseResources() {
-
-    fClipMaskManager.releaseResources();
-
-    while (NULL != fObjectList.head()) {
-        fObjectList.head()->release();
-    }
-
-    SkASSERT(NULL == fQuadIndexBuffer || fQuadIndexBuffer->wasDestroyed());
-    SkSafeSetNull(fQuadIndexBuffer);
-    delete fVertexPool;
-    fVertexPool = NULL;
-    delete fIndexPool;
-    fIndexPool = NULL;
-}
-
-void GrGpu::insertObject(GrGpuResource* object) {
-    SkASSERT(NULL != object);
-    SkASSERT(this == object->getGpu());
-
-    fObjectList.addToHead(object);
-}
-
-void GrGpu::removeObject(GrGpuResource* object) {
-    SkASSERT(NULL != object);
-    SkASSERT(this == object->getGpu());
-
-    fObjectList.remove(object);
-}
-
-
-void GrGpu::unimpl(const char msg[]) {
-#ifdef SK_DEBUG
-    GrPrintf("--- GrGpu unimplemented(\"%s\")\n", msg);
-#endif
-}
+void GrGpu::contextAbandonded() {}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -215,13 +168,12 @@ GrIndexBuffer* GrGpu::createIndexBuffer(size_t size, bool dynamic) {
 GrPath* GrGpu::createPath(const SkPath& path, const SkStrokeRec& stroke) {
     SkASSERT(this->caps()->pathRenderingSupport());
     this->handleDirtyContext();
-    return this->onCreatePath(path, stroke);
+    return this->pathRendering()->createPath(path, stroke);
 }
 
 GrPathRange* GrGpu::createPathRange(size_t size, const SkStrokeRec& stroke) {
-    SkASSERT(this->caps()->pathRenderingSupport());
     this->handleDirtyContext();
-    return this->onCreatePathRange(size, stroke);
+    return this->pathRendering()->createPathRange(size, stroke);
 }
 
 void GrGpu::clear(const SkIRect* rect,
@@ -319,7 +271,8 @@ static inline void fill_indices(uint16_t* indices, int quadCount) {
 }
 
 const GrIndexBuffer* GrGpu::getQuadIndexBuffer() const {
-    if (NULL == fQuadIndexBuffer) {
+    if (NULL == fQuadIndexBuffer || fQuadIndexBuffer->wasDestroyed()) {
+        SkSafeUnref(fQuadIndexBuffer);
         static const int SIZE = sizeof(uint16_t) * 6 * MAX_QUADS;
         GrGpu* me = const_cast<GrGpu*>(this);
         fQuadIndexBuffer = me->createIndexBuffer(SIZE, false);
@@ -407,7 +360,7 @@ void GrGpu::onStencilPath(const GrPath* path, SkPath::FillType fill) {
         return;
     }
 
-    this->onGpuStencilPath(path, fill);
+    this->pathRendering()->stencilPath(path, fill);
 }
 
 
@@ -422,7 +375,7 @@ void GrGpu::onDrawPath(const GrPath* path, SkPath::FillType fill,
         return;
     }
 
-    this->onGpuDrawPath(path, fill);
+    this->pathRendering()->drawPath(path, fill);
 }
 
 void GrGpu::onDrawPaths(const GrPathRange* pathRange,
@@ -438,7 +391,7 @@ void GrGpu::onDrawPaths(const GrPathRange* pathRange,
         return;
     }
 
-    this->onGpuDrawPaths(pathRange, indices, count, transforms, transformsType, fill);
+    this->pathRendering()->drawPaths(pathRange, indices, count, transforms, transformsType, fill);
 }
 
 void GrGpu::finalizeReservedVertices() {

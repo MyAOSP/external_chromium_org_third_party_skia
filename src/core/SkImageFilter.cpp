@@ -75,11 +75,11 @@ void SkImageFilter::Common::detachInputs(SkImageFilter** inputs) {
 }
 
 bool SkImageFilter::Common::unflatten(SkReadBuffer& buffer, int expectedCount) {
-    int count = buffer.readInt();
-    if (expectedCount < 0) {    // means the caller doesn't care how many
-        expectedCount = count;
+    const int count = buffer.readInt();
+    if (!buffer.validate(count >= 0)) {
+        return false;
     }
-    if (!buffer.validate((count == expectedCount) && (count >= 0))) {
+    if (!buffer.validate(expectedCount < 0 || count == expectedCount)) {
         return false;
     }
 
@@ -256,6 +256,9 @@ bool SkImageFilter::filterImageGPU(Proxy* proxy, const SkBitmap& src, const Cont
     desc.fConfig = kRGBA_8888_GrPixelConfig;
 
     GrAutoScratchTexture dst(context, desc);
+    if (NULL == dst.texture()) {
+        return false;
+    }
     GrContext::AutoMatrix am;
     am.setIdentity(context);
     GrContext::AutoRenderTarget art(context, dst.texture()->asRenderTarget());

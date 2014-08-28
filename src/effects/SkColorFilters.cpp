@@ -15,17 +15,9 @@
 #include "SkValidationUtils.h"
 #include "SkColorMatrixFilter.h"
 
-#define ILLEGAL_XFERMODE_MODE   ((SkXfermode::Mode)-1)
-
 // baseclass for filters that store a color and mode
 class SkModeColorFilter : public SkColorFilter {
 public:
-    SkModeColorFilter(SkColor color) {
-        fColor = color;
-        fMode = ILLEGAL_XFERMODE_MODE;
-        this->updateCache();
-    }
-
     SkModeColorFilter(SkColor color, SkXfermode::Mode mode) {
         fColor = color;
         fMode = mode;
@@ -34,14 +26,9 @@ public:
 
     SkColor getColor() const { return fColor; }
     SkXfermode::Mode getMode() const { return fMode; }
-    bool isModeValid() const { return ILLEGAL_XFERMODE_MODE != fMode; }
     SkPMColor getPMColor() const { return fPMColor; }
 
     virtual bool asColorMode(SkColor* color, SkXfermode::Mode* mode) const SK_OVERRIDE {
-        if (ILLEGAL_XFERMODE_MODE == fMode) {
-            return false;
-        }
-
         if (color) {
             *color = fColor;
         }
@@ -93,11 +80,11 @@ public:
 
 protected:
     virtual void flatten(SkWriteBuffer& buffer) const SK_OVERRIDE {
-        this->INHERITED::flatten(buffer);
         buffer.writeColor(fColor);
         buffer.writeUInt(fMode);
     }
 
+#ifdef SK_SUPPORT_LEGACY_DEEPFLATTENING
     SkModeColorFilter(SkReadBuffer& buffer) {
         fColor = buffer.readColor();
         fMode = (SkXfermode::Mode)buffer.readUInt();
@@ -106,6 +93,7 @@ protected:
             buffer.validate(SkIsValidMode(fMode));
         }
     }
+#endif
 
 private:
     SkColor             fColor;
@@ -121,8 +109,16 @@ private:
         fProc16 = SkXfermode::GetProc16(fMode, fColor);
     }
 
+    friend class SkColorFilter;
+
     typedef SkColorFilter INHERITED;
 };
+
+SkFlattenable* SkModeColorFilter::CreateProc(SkReadBuffer& buffer) {
+    SkColor color = buffer.readColor();
+    SkXfermode::Mode mode = (SkXfermode::Mode)buffer.readUInt();
+    return SkColorFilter::CreateModeFilter(color, mode);
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 #if SK_SUPPORT_GPU
@@ -131,7 +127,7 @@ private:
 #include "GrEffectUnitTest.h"
 #include "GrTBackendEffectFactory.h"
 #include "gl/GrGLEffect.h"
-#include "gl/GrGLShaderBuilder.h"
+#include "gl/builders/GrGLProgramBuilder.h"
 #include "SkGr.h"
 
 namespace {
@@ -226,7 +222,7 @@ public:
             : INHERITED(factory) {
         }
 
-        virtual void emitCode(GrGLShaderBuilder* builder,
+        virtual void emitCode(GrGLProgramBuilder* builder,
                               const GrDrawEffect& drawEffect,
                               const GrEffectKey& key,
                               const char* outputColor,
@@ -238,7 +234,7 @@ public:
             SkASSERT(SkXfermode::kDst_Mode != mode);
             const char* colorFilterColorUniName = NULL;
             if (drawEffect.castEffect<ModeColorFilterEffect>().willUseFilterColor()) {
-                fFilterColorUni = builder->addUniform(GrGLShaderBuilder::kFragment_Visibility,
+                fFilterColorUni = builder->addUniform(GrGLProgramBuilder::kFragment_Visibility,
                                                       kVec4f_GrSLType, "FilterColor",
                                                       &colorFilterColorUniName);
             }
@@ -246,7 +242,8 @@ public:
             GrGLSLExpr4 filter =
                 color_filter_expression(mode, GrGLSLExpr4(colorFilterColorUniName), GrGLSLExpr4(inputColor));
 
-            builder->fsCodeAppendf("\t%s = %s;\n", outputColor, filter.c_str());
+            builder->getFragmentShaderBuilder()->
+                    codeAppendf("\t%s = %s;\n", outputColor, filter.c_str());
         }
 
         static void GenKey(const GrDrawEffect& drawEffect, const GrGLCaps&,
@@ -443,12 +440,6 @@ public:
         sk_memset16(result, SkPixel32ToPixel16(this->getPMColor()), count);
     }
 
-    SK_DECLARE_PUBLIC_FLATTENABLE_DESERIALIZATION_PROCS(Src_SkModeColorFilter)
-
-protected:
-    Src_SkModeColorFilter(SkReadBuffer& buffer)
-        : INHERITED(buffer) {}
-
 private:
     typedef SkModeColorFilter INHERITED;
 };
@@ -479,14 +470,6 @@ public:
         sk_memset16(result, SkPixel32ToPixel16(this->getPMColor()), count);
     }
 
-    SK_DECLARE_PUBLIC_FLATTENABLE_DESERIALIZATION_PROCS(SrcOver_SkModeColorFilter)
-
-protected:
-    SrcOver_SkModeColorFilter(SkReadBuffer& buffer)
-        : INHERITED(buffer) {
-            fColor32Proc = SkBlitRow::ColorProcFactory();
-        }
-
 private:
 
     SkBlitRow::ColorProc fColor32Proc;
@@ -496,8 +479,11 @@ private:
 
 ///////////////////////////////////////////////////////////////////////////////
 
-SkColorFilter* SkColorFilter::CreateModeFilter(SkColor color,
-                                               SkXfermode::Mode mode) {
+SkColorFilter* SkColorFilter::CreateModeFilter(SkColor color, SkXfermode::Mode mode) {
+    if (!SkIsValidMode(mode)) {
+        return NULL;
+    }
+
     unsigned alpha = SkColorGetA(color);
 
     // first collaps some modes if possible
@@ -562,6 +548,4 @@ SkColorFilter* SkColorFilter::CreateLightingFilter(SkColor mul, SkColor add) {
 
 SK_DEFINE_FLATTENABLE_REGISTRAR_GROUP_START(SkColorFilter)
     SK_DEFINE_FLATTENABLE_REGISTRAR_ENTRY(SkModeColorFilter)
-    SK_DEFINE_FLATTENABLE_REGISTRAR_ENTRY(Src_SkModeColorFilter)
-    SK_DEFINE_FLATTENABLE_REGISTRAR_ENTRY(SrcOver_SkModeColorFilter)
 SK_DEFINE_FLATTENABLE_REGISTRAR_GROUP_END

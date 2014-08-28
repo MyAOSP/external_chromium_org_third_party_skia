@@ -297,7 +297,7 @@ static bool write(SkCanvas* canvas, const SkString& writePath, const SkString& m
     SkString outputFilename;
     const char *outputSubdirPtr = NULL;
     if (useChecksumBasedFilenames) {
-        const ImageDigest *imageDigestPtr = bitmapAndDigest.getImageDigestPtr();
+        ImageDigest *imageDigestPtr = bitmapAndDigest.getImageDigestPtr();
         outputSubdirPtr = escapedInputFilename.c_str();
         outputFilename.set(imageDigestPtr->getHashType());
         outputFilename.append("_");
@@ -312,7 +312,7 @@ static bool write(SkCanvas* canvas, const SkString& writePath, const SkString& m
     outputFilename.append(".png");
 
     if (NULL != jsonSummaryPtr) {
-        const ImageDigest *imageDigestPtr = bitmapAndDigest.getImageDigestPtr();
+        ImageDigest *imageDigestPtr = bitmapAndDigest.getImageDigestPtr();
         SkString outputRelativePath;
         if (outputSubdirPtr) {
             outputRelativePath.set(outputSubdirPtr);
@@ -325,8 +325,8 @@ static bool write(SkCanvas* canvas, const SkString& writePath, const SkString& m
         jsonSummaryPtr->add(inputFilename.c_str(), outputRelativePath.c_str(),
                             *imageDigestPtr, tileNumberPtr);
         if (!mismatchPath.isEmpty() &&
-            !jsonSummaryPtr->matchesExpectation(inputFilename.c_str(), *imageDigestPtr,
-                                                tileNumberPtr)) {
+            !jsonSummaryPtr->getExpectation(inputFilename.c_str(),
+                                            tileNumberPtr).matches(*imageDigestPtr)) {
             if (!write_bitmap_to_disk(bitmap, mismatchPath, outputSubdirPtr, outputFilename)) {
                 return false;
             }
@@ -444,8 +444,14 @@ SkString SimplePictureRenderer::getConfigNameInternal() {
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
 
+#if SK_SUPPORT_GPU
+TiledPictureRenderer::TiledPictureRenderer(const GrContext::Options& opts)
+    : INHERITED(opts)        
+    , fTileWidth(kDefaultTileWidth)
+#else
 TiledPictureRenderer::TiledPictureRenderer()
     : fTileWidth(kDefaultTileWidth)
+#endif
     , fTileHeight(kDefaultTileHeight)
     , fTileWidthPercentage(0.0)
     , fTileHeightPercentage(0.0)
@@ -745,6 +751,10 @@ SkBBHFactory* PictureRenderer::getFactory() {
 
 class GatherRenderer : public PictureRenderer {
 public:
+#if SK_SUPPORT_GPU
+    GatherRenderer(const GrContext::Options& opts) : INHERITED(opts) { }
+#endif
+
     virtual bool render(SkBitmap** out = NULL) SK_OVERRIDE {
         SkRect bounds = SkRect::MakeWH(SkIntToScalar(fPicture->width()),
                                        SkIntToScalar(fPicture->height()));
@@ -758,10 +768,18 @@ private:
     virtual SkString getConfigNameInternal() SK_OVERRIDE {
         return SkString("gather_pixelrefs");
     }
+
+    typedef PictureRenderer INHERITED;
 };
 
+#if SK_SUPPORT_GPU
+PictureRenderer* CreateGatherPixelRefsRenderer(const GrContext::Options& opts) {
+    return SkNEW_ARGS(GatherRenderer, (opts));
+}
+#else
 PictureRenderer* CreateGatherPixelRefsRenderer() {
     return SkNEW(GatherRenderer);
 }
+#endif
 
 } // namespace sk_tools

@@ -10,16 +10,19 @@
 #include "Benchmark.h"
 #include "CrashHandler.h"
 #include "GMBench.h"
+#include "ProcStats.h"
 #include "ResultsWriter.h"
 #include "SKPBench.h"
 #include "Stats.h"
 #include "Timer.h"
 
-#include "SkOSFile.h"
+#include "SkBBHFactory.h"
 #include "SkCanvas.h"
 #include "SkCommonFlags.h"
 #include "SkForceLinking.h"
 #include "SkGraphics.h"
+#include "SkOSFile.h"
+#include "SkPictureRecorder.h"
 #include "SkString.h"
 #include "SkSurface.h"
 
@@ -63,11 +66,14 @@ DEFINE_string(outResultsFile, "", "If given, write results here as JSON.");
 DEFINE_int32(maxCalibrationAttempts, 3,
              "Try up to this many times to guess loops for a bench, or skip the bench.");
 DEFINE_int32(maxLoops, 1000000, "Never run a bench more times than this.");
-DEFINE_string(key, "", "Space-separated key/value pairs to add to JSON.");
-DEFINE_string(gitHash, "", "Git hash to add to JSON.");
+DEFINE_string(properties, "",
+              "Space-separated key/value pairs to add to JSON identifying this nanobench run.");
+DEFINE_string(key, "",
+              "Space-separated key/value pairs to add to JSON identifying this bench config.");
 
 DEFINE_string(clip, "0,0,1000,1000", "Clip for SKPs.");
 DEFINE_string(scales, "1.0", "Space-separated scales for SKPs.");
+DEFINE_bool(bbh, true, "Build a BBH for SKPs?");
 
 static SkString humanize(double ms) {
     if (ms > 1e+3) return SkStringPrintf("%.3gs",  ms/1e3);
@@ -388,20 +394,6 @@ static void create_targets(SkTDArray<Target*>* targets, Benchmark* b,
     }
 }
 
-static void fill_static_options(ResultsWriter* log) {
-#if defined(SK_BUILD_FOR_WIN32)
-    log->option("system", "WIN32");
-#elif defined(SK_BUILD_FOR_MAC)
-    log->option("system", "MAC");
-#elif defined(SK_BUILD_FOR_ANDROID)
-    log->option("system", "ANDROID");
-#elif defined(SK_BUILD_FOR_UNIX)
-    log->option("system", "UNIX");
-#else
-    log->option("system", "other");
-#endif
-}
-
 #if SK_SUPPORT_GPU
 static void fill_gpu_options(ResultsWriter* log, SkGLContextHelper* ctx) {
     const GrGLubyte* version;
@@ -492,6 +484,20 @@ public:
 
                 SkString name = SkOSPath::Basename(path.c_str());
 
+                if (FLAGS_bbh) {
+                    // The SKP we read off disk doesn't have a BBH.  Re-record so it grows one.
+                    // Here we use an SkTileGrid with parameters optimized for FLAGS_clip.
+                    const SkTileGridFactory::TileGridInfo info = {
+                        SkISize::Make(fClip.width(), fClip.height()),  // tile interval
+                        SkISize::Make(0,0),                            // margin
+                        SkIPoint::Make(fClip.left(), fClip.top()),     // offset
+                    };
+                    SkTileGridFactory factory(info);
+                    SkPictureRecorder recorder;
+                    pic->draw(recorder.beginRecording(pic->width(), pic->height(), &factory));
+                    pic.reset(recorder.endRecording());
+                }
+
                 fSourceType = "skp";
                 return SkNEW_ARGS(SKPBench,
                         (name.c_str(), pic.get(), fClip, fScales[fCurrentScale]));
@@ -549,23 +555,26 @@ int nanobench_main() {
         }
     }
 
-    MultiResultsWriter log;
-    SkAutoTDelete<NanoJSONResultsWriter> json;
+    SkAutoTDelete<ResultsWriter> log(SkNEW(ResultsWriter));
     if (!FLAGS_outResultsFile.isEmpty()) {
-        const char* gitHash = FLAGS_gitHash.isEmpty() ? "unknown-revision" : FLAGS_gitHash[0];
-        json.reset(SkNEW(NanoJSONResultsWriter(FLAGS_outResultsFile[0], gitHash)));
-        log.add(json.get());
+        log.reset(SkNEW(NanoJSONResultsWriter(FLAGS_outResultsFile[0])));
     }
-    CallEnd<MultiResultsWriter> ender(log);
+
+    if (1 == FLAGS_properties.count() % 2) {
+        SkDebugf("ERROR: --properties must be passed with an even number of arguments.\n");
+        return 1;
+    }
+    for (int i = 1; i < FLAGS_properties.count(); i += 2) {
+        log->property(FLAGS_properties[i-1], FLAGS_properties[i]);
+    }
 
     if (1 == FLAGS_key.count() % 2) {
         SkDebugf("ERROR: --key must be passed with an even number of arguments.\n");
         return 1;
     }
     for (int i = 1; i < FLAGS_key.count(); i += 2) {
-        log.key(FLAGS_key[i-1], FLAGS_key[i]);
+        log->key(FLAGS_key[i-1], FLAGS_key[i]);
     }
-    fill_static_options(&log);
 
     const double overhead = estimate_timer_overhead();
     SkDebugf("Timer overhead: %s\n", HUMANIZE(overhead));
@@ -579,7 +588,7 @@ int nanobench_main() {
     } else if (FLAGS_quiet) {
         SkDebugf("median\tbench\tconfig\n");
     } else {
-        SkDebugf("loops\tmin\tmedian\tmean\tmax\tstddev\tsamples\tconfig\tbench\n");
+        SkDebugf("maxrss\tloops\tmin\tmedian\tmean\tmax\tstddev\tsamples\tconfig\tbench\n");
     }
 
     SkTDArray<Config> configs;
@@ -596,20 +605,12 @@ int nanobench_main() {
         create_targets(&targets, bench.get(), configs);
 
         if (!targets.isEmpty()) {
-            log.bench(bench->getName(), bench->getSize().fX, bench->getSize().fY);
+            log->bench(bench->getName(), bench->getSize().fX, bench->getSize().fY);
             bench->preDraw();
         }
         for (int j = 0; j < targets.count(); j++) {
             SkCanvas* canvas = targets[j]->surface.get() ? targets[j]->surface->getCanvas() : NULL;
             const char* config = targets[j]->config.name;
-
-#if SK_DEBUG
-            // skia:2797  Some SKPs SkASSERT in debug mode.  Skip them for now.
-            if (0 == strcmp("565", config) && SkStrContains(bench->getName(), ".skp")) {
-                SkDebugf("Skipping 565 %s.  See skia:2797\n", bench->getName());
-                continue;
-            }
-#endif
 
             const int loops =
 #if SK_SUPPORT_GPU
@@ -632,18 +633,18 @@ int nanobench_main() {
             }
 
             Stats stats(samples.get(), FLAGS_samples);
-            log.config(config);
-            benchStream.fillCurrentOptions(&log);
+            log->config(config);
+            benchStream.fillCurrentOptions(log.get());
 #if SK_SUPPORT_GPU
             if (Benchmark::kGPU_Backend == targets[j]->config.backend) {
-                fill_gpu_options(&log, targets[j]->gl);
+                fill_gpu_options(log.get(), targets[j]->gl);
             }
 #endif
-            log.timer("min_ms",    stats.min);
-            log.timer("median_ms", stats.median);
-            log.timer("mean_ms",   stats.mean);
-            log.timer("max_ms",    stats.max);
-            log.timer("stddev_ms", sqrt(stats.var));
+            log->timer("min_ms",    stats.min);
+            log->timer("median_ms", stats.median);
+            log->timer("mean_ms",   stats.mean);
+            log->timer("max_ms",    stats.max);
+            log->timer("stddev_ms", sqrt(stats.var));
 
             if (kAutoTuneLoops != FLAGS_loops) {
                 if (targets.count() == 1) {
@@ -662,7 +663,8 @@ int nanobench_main() {
                 SkDebugf("%s\t%s\t%s\n", HUMANIZE(stats.median), bench->getName(), config);
             } else {
                 const double stddev_percent = 100 * sqrt(stats.var) / stats.mean;
-                SkDebugf("%d\t%s\t%s\t%s\t%s\t%.0f%%\t%s\t%s\t%s\n"
+                SkDebugf("%4dM\t%d\t%s\t%s\t%s\t%s\t%.0f%%\t%s\t%s\t%s\n"
+                        , sk_tools::getMaxResidentSetSizeMB()
                         , loops
                         , HUMANIZE(stats.min)
                         , HUMANIZE(stats.median)

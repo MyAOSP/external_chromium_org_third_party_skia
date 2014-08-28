@@ -17,10 +17,11 @@
 #include "GrTexture.h"
 #include "GrTBackendEffectFactory.h"
 #include "gl/GrGLEffect.h"
-#include "gl/GrGLShaderBuilder.h"
+#include "gl/builders/GrGLProgramBuilder.h"
 #include "effects/Gr1DKernelEffect.h"
 #endif
 
+#ifdef SK_SUPPORT_LEGACY_DEEPFLATTENING
 SkMorphologyImageFilter::SkMorphologyImageFilter(SkReadBuffer& buffer)
   : INHERITED(1, buffer) {
     fRadius.fWidth = buffer.readInt();
@@ -28,6 +29,7 @@ SkMorphologyImageFilter::SkMorphologyImageFilter(SkReadBuffer& buffer)
     buffer.validate((fRadius.fWidth >= 0) &&
                     (fRadius.fHeight >= 0));
 }
+#endif
 
 SkMorphologyImageFilter::SkMorphologyImageFilter(int radiusX,
                                                  int radiusY,
@@ -35,7 +37,6 @@ SkMorphologyImageFilter::SkMorphologyImageFilter(int radiusX,
                                                  const CropRect* cropRect)
     : INHERITED(1, &input, cropRect), fRadius(SkISize::Make(radiusX, radiusY)) {
 }
-
 
 void SkMorphologyImageFilter::flatten(SkWriteBuffer& buffer) const {
     this->INHERITED::flatten(buffer);
@@ -258,6 +259,20 @@ bool SkMorphologyImageFilter::onFilterBounds(const SkIRect& src, const SkMatrix&
     return true;
 }
 
+SkFlattenable* SkErodeImageFilter::CreateProc(SkReadBuffer& buffer) {
+    SK_IMAGEFILTER_UNFLATTEN_COMMON(common, 1);
+    const int width = buffer.readInt();
+    const int height = buffer.readInt();
+    return Create(width, height, common.getInput(0), &common.cropRect());
+}
+
+SkFlattenable* SkDilateImageFilter::CreateProc(SkReadBuffer& buffer) {
+    SK_IMAGEFILTER_UNFLATTEN_COMMON(common, 1);
+    const int width = buffer.readInt();
+    const int height = buffer.readInt();
+    return Create(width, height, common.getInput(0), &common.cropRect());
+}
+
 #if SK_SUPPORT_GPU
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -314,7 +329,7 @@ class GrGLMorphologyEffect : public GrGLEffect {
 public:
     GrGLMorphologyEffect (const GrBackendEffectFactory&, const GrDrawEffect&);
 
-    virtual void emitCode(GrGLShaderBuilder*,
+    virtual void emitCode(GrGLProgramBuilder*,
                           const GrDrawEffect&,
                           const GrEffectKey&,
                           const char* outputColor,
@@ -344,25 +359,26 @@ GrGLMorphologyEffect::GrGLMorphologyEffect(const GrBackendEffectFactory& factory
     fType = m.type();
 }
 
-void GrGLMorphologyEffect::emitCode(GrGLShaderBuilder* builder,
+void GrGLMorphologyEffect::emitCode(GrGLProgramBuilder* builder,
                                     const GrDrawEffect&,
                                     const GrEffectKey& key,
                                     const char* outputColor,
                                     const char* inputColor,
                                     const TransformedCoordsArray& coords,
                                     const TextureSamplerArray& samplers) {
-    SkString coords2D = builder->ensureFSCoords2D(coords, 0);
-    fImageIncrementUni = builder->addUniform(GrGLShaderBuilder::kFragment_Visibility,
+    fImageIncrementUni = builder->addUniform(GrGLProgramBuilder::kFragment_Visibility,
                                              kVec2f_GrSLType, "ImageIncrement");
 
+    GrGLFragmentShaderBuilder* fsBuilder = builder->getFragmentShaderBuilder();
+    SkString coords2D = fsBuilder->ensureFSCoords2D(coords, 0);
     const char* func;
     switch (fType) {
         case GrMorphologyEffect::kErode_MorphologyType:
-            builder->fsCodeAppendf("\t\t%s = vec4(1, 1, 1, 1);\n", outputColor);
+            fsBuilder->codeAppendf("\t\t%s = vec4(1, 1, 1, 1);\n", outputColor);
             func = "min";
             break;
         case GrMorphologyEffect::kDilate_MorphologyType:
-            builder->fsCodeAppendf("\t\t%s = vec4(0, 0, 0, 0);\n", outputColor);
+            fsBuilder->codeAppendf("\t\t%s = vec4(0, 0, 0, 0);\n", outputColor);
             func = "max";
             break;
         default:
@@ -372,16 +388,16 @@ void GrGLMorphologyEffect::emitCode(GrGLShaderBuilder* builder,
     }
     const char* imgInc = builder->getUniformCStr(fImageIncrementUni);
 
-    builder->fsCodeAppendf("\t\tvec2 coord = %s - %d.0 * %s;\n", coords2D.c_str(), fRadius, imgInc);
-    builder->fsCodeAppendf("\t\tfor (int i = 0; i < %d; i++) {\n", this->width());
-    builder->fsCodeAppendf("\t\t\t%s = %s(%s, ", outputColor, func, outputColor);
-    builder->fsAppendTextureLookup(samplers[0], "coord");
-    builder->fsCodeAppend(");\n");
-    builder->fsCodeAppendf("\t\t\tcoord += %s;\n", imgInc);
-    builder->fsCodeAppend("\t\t}\n");
+    fsBuilder->codeAppendf("\t\tvec2 coord = %s - %d.0 * %s;\n", coords2D.c_str(), fRadius, imgInc);
+    fsBuilder->codeAppendf("\t\tfor (int i = 0; i < %d; i++) {\n", this->width());
+    fsBuilder->codeAppendf("\t\t\t%s = %s(%s, ", outputColor, func, outputColor);
+    fsBuilder->appendTextureLookup(samplers[0], "coord");
+    fsBuilder->codeAppend(");\n");
+    fsBuilder->codeAppendf("\t\t\tcoord += %s;\n", imgInc);
+    fsBuilder->codeAppend("\t\t}\n");
     SkString modulate;
     GrGLSLMulVarBy4f(&modulate, 2, outputColor, inputColor);
-    builder->fsCodeAppend(modulate.c_str());
+    fsBuilder->codeAppend(modulate.c_str());
 }
 
 void GrGLMorphologyEffect::GenKey(const GrDrawEffect& drawEffect,
@@ -506,6 +522,9 @@ bool apply_morphology(const SkBitmap& input,
 
     if (radius.fWidth > 0) {
         GrAutoScratchTexture ast(context, desc);
+        if (NULL == ast.texture()) {
+            return false;
+        }
         GrContext::AutoRenderTarget art(context, ast.texture()->asRenderTarget());
         apply_morphology_pass(context, src, srcRect, dstRect, radius.fWidth,
                               morphType, Gr1DKernelEffect::kX_Direction);
@@ -519,6 +538,9 @@ bool apply_morphology(const SkBitmap& input,
     }
     if (radius.fHeight > 0) {
         GrAutoScratchTexture ast(context, desc);
+        if (NULL == ast.texture()) {
+            return false;
+        }
         GrContext::AutoRenderTarget art(context, ast.texture()->asRenderTarget());
         apply_morphology_pass(context, src, srcRect, dstRect, radius.fHeight,
                               morphType, Gr1DKernelEffect::kY_Direction);

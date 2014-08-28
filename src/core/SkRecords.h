@@ -10,20 +10,7 @@
 
 #include "SkCanvas.h"
 #include "SkPicture.h"
-
-class SkPictureBox {
-public:
-    SkPictureBox(const SkPicture* obj) : fObj(SkRef(obj)) {}
-    ~SkPictureBox() { fObj->unref(); }
-
-    operator const SkPicture*() const { return fObj; }
-
-private:
-    SkPictureBox(const SkPictureBox&);
-    SkPictureBox& operator=(const SkPictureBox&);
-
-    const SkPicture* fObj;
-};
+#include "SkTextBlob.h"
 
 namespace SkRecords {
 
@@ -44,7 +31,6 @@ namespace SkRecords {
     M(SaveLayer)                                                    \
     M(PushCull)                                                     \
     M(PopCull)                                                      \
-    M(Concat)                                                       \
     M(SetMatrix)                                                    \
     M(ClipPath)                                                     \
     M(ClipRRect)                                                    \
@@ -64,11 +50,12 @@ namespace SkRecords {
     M(DrawPoints)                                                   \
     M(DrawPosText)                                                  \
     M(DrawPosTextH)                                                 \
+    M(DrawText)                                                     \
+    M(DrawTextOnPath)                                               \
     M(DrawRRect)                                                    \
     M(DrawRect)                                                     \
     M(DrawSprite)                                                   \
-    M(DrawText)                                                     \
-    M(DrawTextOnPath)                                               \
+    M(DrawTextBlob)                                                     \
     M(DrawVertices)
 
 // Defines SkRecords::Type, an enum of all record types.
@@ -132,6 +119,18 @@ struct T {                                                                \
     operator const T*() const { return ptr; } \
     T* operator->() { return ptr; }           \
     const T* operator->() const { return ptr; }
+
+template <typename T>
+class RefBox : SkNoncopyable {
+public:
+    RefBox(T* obj) : fObj(SkRef(obj)) {}
+    ~RefBox() { fObj->unref(); }
+
+    ACT_AS_PTR(fObj);
+
+private:
+    T* fObj;
+};
 
 // An Optional doesn't own the pointer's memory, but may need to destroy non-POD data.
 template <typename T>
@@ -197,20 +196,19 @@ private:
 
 RECORD0(NoOp);
 
-RECORD1(Restore, SkMatrix, matrix);
+RECORD2(Restore, SkIRect, devBounds, SkMatrix, matrix);
 RECORD0(Save);
 RECORD3(SaveLayer, Optional<SkRect>, bounds, Optional<SkPaint>, paint, SkCanvas::SaveFlags, flags);
 
 RECORD1(PushCull, SkRect, rect);
 RECORD0(PopCull);
 
-RECORD1(Concat, SkMatrix, matrix);
 RECORD1(SetMatrix, SkMatrix, matrix);
 
-RECORD3(ClipPath, SkPath, path, SkRegion::Op, op, bool, doAA);
-RECORD3(ClipRRect, SkRRect, rrect, SkRegion::Op, op, bool, doAA);
-RECORD3(ClipRect, SkRect, rect, SkRegion::Op, op, bool, doAA);
-RECORD2(ClipRegion, SkRegion, region, SkRegion::Op, op);
+RECORD4(ClipPath,   SkIRect, devBounds, SkPath,   path,   SkRegion::Op, op, bool, doAA);
+RECORD4(ClipRRect,  SkIRect, devBounds, SkRRect,  rrect,  SkRegion::Op, op, bool, doAA);
+RECORD4(ClipRect,   SkIRect, devBounds, SkRect,   rect,   SkRegion::Op, op, bool, doAA);
+RECORD3(ClipRegion, SkIRect, devBounds, SkRegion, region, SkRegion::Op, op);
 
 RECORD1(Clear, SkColor, color);
 // While not strictly required, if you have an SkPaint, it's fastest to put it first.
@@ -233,7 +231,9 @@ RECORD2(DrawOval, SkPaint, paint, SkRect, oval);
 RECORD1(DrawPaint, SkPaint, paint);
 RECORD2(DrawPath, SkPaint, paint, SkPath, path);
 //RECORD2(DrawPatch, SkPaint, paint, SkPatch, patch);
-RECORD3(DrawPicture, Optional<SkPaint>, paint, SkPictureBox, picture, Optional<SkMatrix>, matrix);
+RECORD3(DrawPicture, Optional<SkPaint>, paint,
+                     RefBox<const SkPicture>, picture,
+                     Optional<SkMatrix>, matrix);
 RECORD4(DrawPoints, SkPaint, paint, SkCanvas::PointMode, mode, size_t, count, SkPoint*, pts);
 RECORD4(DrawPosText, SkPaint, paint,
                      PODArray<char>, text,
@@ -252,6 +252,10 @@ RECORD5(DrawText, SkPaint, paint,
                   size_t, byteLength,
                   SkScalar, x,
                   SkScalar, y);
+RECORD4(DrawTextBlob, SkPaint, paint,
+                      RefBox<const SkTextBlob>, blob,
+                      SkScalar, x,
+                      SkScalar, y);
 RECORD5(DrawTextOnPath, SkPaint, paint,
                         PODArray<char>, text,
                         size_t, byteLength,

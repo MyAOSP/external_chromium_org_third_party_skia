@@ -16,7 +16,7 @@
 #if SK_SUPPORT_GPU
 #include "effects/GrSingleTextureEffect.h"
 #include "gl/GrGLEffect.h"
-#include "gl/GrGLShaderBuilder.h"
+#include "gl/builders/GrGLProgramBuilder.h"
 #include "gl/GrGLSL.h"
 #include "gl/GrGLTexture.h"
 #include "GrTBackendEffectFactory.h"
@@ -95,7 +95,7 @@ class GrGLMagnifierEffect : public GrGLEffect {
 public:
     GrGLMagnifierEffect(const GrBackendEffectFactory&, const GrDrawEffect&);
 
-    virtual void emitCode(GrGLShaderBuilder*,
+    virtual void emitCode(GrGLProgramBuilder*,
                           const GrDrawEffect&,
                           const GrEffectKey&,
                           const char* outputColor,
@@ -117,57 +117,58 @@ GrGLMagnifierEffect::GrGLMagnifierEffect(const GrBackendEffectFactory& factory, 
     : INHERITED(factory) {
 }
 
-void GrGLMagnifierEffect::emitCode(GrGLShaderBuilder* builder,
+void GrGLMagnifierEffect::emitCode(GrGLProgramBuilder* builder,
                                    const GrDrawEffect&,
                                    const GrEffectKey& key,
                                    const char* outputColor,
                                    const char* inputColor,
                                    const TransformedCoordsArray& coords,
                                    const TextureSamplerArray& samplers) {
-    SkString coords2D = builder->ensureFSCoords2D(coords, 0);
     fOffsetVar = builder->addUniform(
-        GrGLShaderBuilder::kFragment_Visibility |
-        GrGLShaderBuilder::kVertex_Visibility,
+        GrGLProgramBuilder::kFragment_Visibility |
+        GrGLProgramBuilder::kVertex_Visibility,
         kVec2f_GrSLType, "Offset");
     fInvZoomVar = builder->addUniform(
-        GrGLShaderBuilder::kFragment_Visibility |
-        GrGLShaderBuilder::kVertex_Visibility,
+        GrGLProgramBuilder::kFragment_Visibility |
+        GrGLProgramBuilder::kVertex_Visibility,
         kVec2f_GrSLType, "InvZoom");
     fInvInsetVar = builder->addUniform(
-        GrGLShaderBuilder::kFragment_Visibility |
-        GrGLShaderBuilder::kVertex_Visibility,
+        GrGLProgramBuilder::kFragment_Visibility |
+        GrGLProgramBuilder::kVertex_Visibility,
         kVec2f_GrSLType, "InvInset");
 
-    builder->fsCodeAppendf("\t\tvec2 coord = %s;\n", coords2D.c_str());
-    builder->fsCodeAppendf("\t\tvec2 zoom_coord = %s + %s * %s;\n",
+    GrGLFragmentShaderBuilder* fsBuilder = builder->getFragmentShaderBuilder();
+    SkString coords2D = fsBuilder->ensureFSCoords2D(coords, 0);
+    fsBuilder->codeAppendf("\t\tvec2 coord = %s;\n", coords2D.c_str());
+    fsBuilder->codeAppendf("\t\tvec2 zoom_coord = %s + %s * %s;\n",
                            builder->getUniformCStr(fOffsetVar),
                            coords2D.c_str(),
                            builder->getUniformCStr(fInvZoomVar));
 
-    builder->fsCodeAppend("\t\tvec2 delta = min(coord, vec2(1.0, 1.0) - coord);\n");
+    fsBuilder->codeAppend("\t\tvec2 delta = min(coord, vec2(1.0, 1.0) - coord);\n");
 
-    builder->fsCodeAppendf("\t\tdelta = delta * %s;\n", builder->getUniformCStr(fInvInsetVar));
+    fsBuilder->codeAppendf("\t\tdelta = delta * %s;\n", builder->getUniformCStr(fInvInsetVar));
 
-    builder->fsCodeAppend("\t\tfloat weight = 0.0;\n");
-    builder->fsCodeAppend("\t\tif (delta.s < 2.0 && delta.t < 2.0) {\n");
-    builder->fsCodeAppend("\t\t\tdelta = vec2(2.0, 2.0) - delta;\n");
-    builder->fsCodeAppend("\t\t\tfloat dist = length(delta);\n");
-    builder->fsCodeAppend("\t\t\tdist = max(2.0 - dist, 0.0);\n");
-    builder->fsCodeAppend("\t\t\tweight = min(dist * dist, 1.0);\n");
-    builder->fsCodeAppend("\t\t} else {\n");
-    builder->fsCodeAppend("\t\t\tvec2 delta_squared = delta * delta;\n");
-    builder->fsCodeAppend("\t\t\tweight = min(min(delta_squared.x, delta_squared.y), 1.0);\n");
-    builder->fsCodeAppend("\t\t}\n");
+    fsBuilder->codeAppend("\t\tfloat weight = 0.0;\n");
+    fsBuilder->codeAppend("\t\tif (delta.s < 2.0 && delta.t < 2.0) {\n");
+    fsBuilder->codeAppend("\t\t\tdelta = vec2(2.0, 2.0) - delta;\n");
+    fsBuilder->codeAppend("\t\t\tfloat dist = length(delta);\n");
+    fsBuilder->codeAppend("\t\t\tdist = max(2.0 - dist, 0.0);\n");
+    fsBuilder->codeAppend("\t\t\tweight = min(dist * dist, 1.0);\n");
+    fsBuilder->codeAppend("\t\t} else {\n");
+    fsBuilder->codeAppend("\t\t\tvec2 delta_squared = delta * delta;\n");
+    fsBuilder->codeAppend("\t\t\tweight = min(min(delta_squared.x, delta_squared.y), 1.0);\n");
+    fsBuilder->codeAppend("\t\t}\n");
 
-    builder->fsCodeAppend("\t\tvec2 mix_coord = mix(coord, zoom_coord, weight);\n");
-    builder->fsCodeAppend("\t\tvec4 output_color = ");
-    builder->fsAppendTextureLookup(samplers[0], "mix_coord");
-    builder->fsCodeAppend(";\n");
+    fsBuilder->codeAppend("\t\tvec2 mix_coord = mix(coord, zoom_coord, weight);\n");
+    fsBuilder->codeAppend("\t\tvec4 output_color = ");
+    fsBuilder->appendTextureLookup(samplers[0], "mix_coord");
+    fsBuilder->codeAppend(";\n");
 
-    builder->fsCodeAppendf("\t\t%s = output_color;", outputColor);
+    fsBuilder->codeAppendf("\t\t%s = output_color;", outputColor);
     SkString modulate;
     GrGLSLMulVarBy4f(&modulate, 2, outputColor, inputColor);
-    builder->fsCodeAppend(modulate.c_str());
+    fsBuilder->codeAppend(modulate.c_str());
 }
 
 void GrGLMagnifierEffect::setData(const GrGLProgramDataManager& pdman,
@@ -232,6 +233,22 @@ void GrMagnifierEffect::getConstantColorComponents(GrColor* color, uint32_t* val
 #endif
 
 ////////////////////////////////////////////////////////////////////////////////
+
+SkImageFilter* SkMagnifierImageFilter::Create(const SkRect& srcRect, SkScalar inset,
+                                              SkImageFilter* input) {
+    
+    if (!SkScalarIsFinite(inset) || !SkIsValidRect(srcRect)) {
+        return NULL;
+    }
+    // Negative numbers in src rect are not supported
+    if (srcRect.fLeft < 0 || srcRect.fTop < 0) {
+        return NULL;
+    }
+    return SkNEW_ARGS(SkMagnifierImageFilter, (srcRect, inset, input));
+}
+
+
+#ifdef SK_SUPPORT_LEGACY_DEEPFLATTENING
 SkMagnifierImageFilter::SkMagnifierImageFilter(SkReadBuffer& buffer)
   : INHERITED(1, buffer) {
     float x = buffer.readScalar();
@@ -245,6 +262,7 @@ SkMagnifierImageFilter::SkMagnifierImageFilter(SkReadBuffer& buffer)
                     // Negative numbers in src rect are not supported
                     (fSrcRect.fLeft >= 0) && (fSrcRect.fTop >= 0));
 }
+#endif
 
 SkMagnifierImageFilter::SkMagnifierImageFilter(const SkRect& srcRect, SkScalar inset,
                                                SkImageFilter* input)
@@ -271,12 +289,16 @@ bool SkMagnifierImageFilter::asNewEffect(GrEffect** effect, GrTexture* texture, 
 }
 #endif
 
+SkFlattenable* SkMagnifierImageFilter::CreateProc(SkReadBuffer& buffer) {
+    SK_IMAGEFILTER_UNFLATTEN_COMMON(common, 1);
+    SkRect src;
+    buffer.readRect(&src);
+    return Create(src, buffer.readScalar(), common.getInput(0));
+}
+
 void SkMagnifierImageFilter::flatten(SkWriteBuffer& buffer) const {
     this->INHERITED::flatten(buffer);
-    buffer.writeScalar(fSrcRect.x());
-    buffer.writeScalar(fSrcRect.y());
-    buffer.writeScalar(fSrcRect.width());
-    buffer.writeScalar(fSrcRect.height());
+    buffer.writeRect(fSrcRect);
     buffer.writeScalar(fInset);
 }
 

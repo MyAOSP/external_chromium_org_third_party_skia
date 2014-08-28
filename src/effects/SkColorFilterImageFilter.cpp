@@ -83,14 +83,21 @@ SkColorFilterImageFilter::SkColorFilterImageFilter(SkColorFilter* cf,
     SkSafeRef(cf);
 }
 
+#ifdef SK_SUPPORT_LEGACY_DEEPFLATTENING
 SkColorFilterImageFilter::SkColorFilterImageFilter(SkReadBuffer& buffer)
   : INHERITED(1, buffer) {
     fColorFilter = buffer.readColorFilter();
 }
+#endif
+
+SkFlattenable* SkColorFilterImageFilter::CreateProc(SkReadBuffer& buffer) {
+    SK_IMAGEFILTER_UNFLATTEN_COMMON(common, 1);
+    SkAutoTUnref<SkColorFilter> cf(buffer.readColorFilter());
+    return Create(cf, common.getInput(0), &common.cropRect());
+}
 
 void SkColorFilterImageFilter::flatten(SkWriteBuffer& buffer) const {
     this->INHERITED::flatten(buffer);
-
     buffer.writeFlattenable(fColorFilter);
 }
 

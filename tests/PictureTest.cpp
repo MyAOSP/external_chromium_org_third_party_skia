@@ -5,6 +5,7 @@
  * found in the LICENSE file.
  */
 
+#include "SkBBoxHierarchy.h"
 #include "SkBlurImageFilter.h"
 #include "SkCanvas.h"
 #include "SkColorPriv.h"
@@ -577,6 +578,43 @@ static void test_gatherpixelrefs(skiatest::Reporter* reporter) {
     }
 }
 
+#define GENERATE_CANVAS(recorder, x) \
+    (x) ? recorder.EXPERIMENTAL_beginRecording(100, 100) \
+        : recorder.  DEPRECATED_beginRecording(100,100);
+
+/* Hit a few SkPicture::Analysis cases not handled elsewhere. */
+static void test_analysis(skiatest::Reporter* reporter, bool useNewPath) {
+    SkPictureRecorder recorder;
+
+    SkCanvas* canvas = GENERATE_CANVAS(recorder, useNewPath);
+    {
+        canvas->drawRect(SkRect::MakeWH(10, 10), SkPaint ());
+    }
+    SkAutoTUnref<SkPicture> picture(recorder.endRecording());
+    REPORTER_ASSERT(reporter, !picture->willPlayBackBitmaps());
+
+    canvas = GENERATE_CANVAS(recorder, useNewPath);
+    {
+        SkPaint paint;
+        // CreateBitmapShader is too smart for us; an empty (or 1x1) bitmap shader
+        // gets optimized into a non-bitmap form, so we create a 2x2 bitmap here.
+        SkBitmap bitmap;
+        bitmap.allocPixels(SkImageInfo::MakeN32Premul(2, 2));
+        bitmap.eraseColor(SK_ColorBLUE);
+        *(bitmap.getAddr32(0, 0)) = SK_ColorGREEN;
+        SkShader* shader = SkShader::CreateBitmapShader(bitmap, SkShader::kClamp_TileMode,
+                                                        SkShader::kClamp_TileMode);
+        paint.setShader(shader)->unref();
+        REPORTER_ASSERT(reporter,
+                        shader->asABitmap(NULL, NULL, NULL) == SkShader::kDefault_BitmapType);
+
+        canvas->drawRect(SkRect::MakeWH(10, 10), paint);
+    }
+    picture.reset(recorder.endRecording());
+    REPORTER_ASSERT(reporter, picture->willPlayBackBitmaps());
+}
+
+
 static void test_gatherpixelrefsandrects(skiatest::Reporter* reporter) {
     const int IW = 32;
     const int IH = IW;
@@ -662,7 +700,7 @@ static void test_gatherpixelrefsandrects(skiatest::Reporter* reporter) {
 }
 
 #ifdef SK_DEBUG
-// Ensure that deleting an empty SkPicture does not assert. Asserts only fire 
+// Ensure that deleting an empty SkPicture does not assert. Asserts only fire
 // in debug mode, so only run in debug mode.
 static void test_deleting_empty_picture() {
     SkPictureRecorder recorder;
@@ -705,11 +743,13 @@ static void rand_op(SkCanvas* canvas, SkRandom& rand) {
 }
 
 #if SK_SUPPORT_GPU
-static void test_gpu_veto(skiatest::Reporter* reporter) {
+
+static void test_gpu_veto(skiatest::Reporter* reporter,
+                          bool useNewPath) {
 
     SkPictureRecorder recorder;
 
-    SkCanvas* canvas = recorder.beginRecording(100, 100);
+    SkCanvas* canvas = GENERATE_CANVAS(recorder, useNewPath);
     {
         SkPath path;
         path.moveTo(0, 0);
@@ -731,7 +771,7 @@ static void test_gpu_veto(skiatest::Reporter* reporter) {
     REPORTER_ASSERT(reporter, !picture->suitableForGpuRasterization(NULL, &reason));
     REPORTER_ASSERT(reporter, NULL != reason);
 
-    canvas = recorder.beginRecording(100, 100);
+    canvas = GENERATE_CANVAS(recorder, useNewPath);
     {
         SkPath path;
 
@@ -753,7 +793,7 @@ static void test_gpu_veto(skiatest::Reporter* reporter) {
     // A lot of AA concave paths currently render an SkPicture undesireable for GPU rendering
     REPORTER_ASSERT(reporter, !picture->suitableForGpuRasterization(NULL));
 
-    canvas = recorder.beginRecording(100, 100);
+    canvas = GENERATE_CANVAS(recorder, useNewPath);
     {
         SkPath path;
 
@@ -776,7 +816,47 @@ static void test_gpu_veto(skiatest::Reporter* reporter) {
     picture.reset(recorder.endRecording());
     // hairline stroked AA concave paths are fine for GPU rendering
     REPORTER_ASSERT(reporter, picture->suitableForGpuRasterization(NULL));
+
+    canvas = GENERATE_CANVAS(recorder, useNewPath);
+    {
+        SkPaint paint;
+        SkScalar intervals [] = { 10, 20 };
+        SkPathEffect* pe = SkDashPathEffect::Create(intervals, 2, 25);
+        paint.setPathEffect(pe)->unref();
+
+        SkPoint points [2] = { { 0, 0 }, { 100, 0 } };
+        canvas->drawPoints(SkCanvas::kLines_PointMode, 2, points, paint);
+    }
+    picture.reset(recorder.endRecording());
+    // fast-path dashed effects are fine for GPU rendering ...
+    REPORTER_ASSERT(reporter, picture->suitableForGpuRasterization(NULL));
+
+    canvas = GENERATE_CANVAS(recorder, useNewPath);
+    {
+        SkPaint paint;
+        SkScalar intervals [] = { 10, 20 };
+        SkPathEffect* pe = SkDashPathEffect::Create(intervals, 2, 25);
+        paint.setPathEffect(pe)->unref();
+
+        canvas->drawRect(SkRect::MakeWH(10, 10), paint);
+    }
+    picture.reset(recorder.endRecording());
+    // ... but only when applied to drawPoint() calls
+    REPORTER_ASSERT(reporter, !picture->suitableForGpuRasterization(NULL));
+
+    // Nest the previous picture inside a new one.
+    // This doesn't work in the old backend.
+    if (useNewPath) {
+        canvas = GENERATE_CANVAS(recorder, useNewPath);
+        {
+            canvas->drawPicture(picture.get());
+        }
+        picture.reset(recorder.endRecording());
+        REPORTER_ASSERT(reporter, !picture->suitableForGpuRasterization(NULL));
+    }
 }
+
+#undef GENERATE_CANVAS
 
 static void test_gpu_picture_optimization(skiatest::Reporter* reporter,
                                           GrContextFactory* factory) {
@@ -817,7 +897,7 @@ static void test_gpu_picture_optimization(skiatest::Reporter* reporter,
         {
             SkPictureRecorder recorder;
 
-            SkCanvas* c = recorder.beginRecording(kWidth, kHeight);
+            SkCanvas* c = recorder.DEPRECATED_beginRecording(kWidth, kHeight);
             // 1)
             c->saveLayer(NULL, NULL);
             c->restore();
@@ -860,20 +940,20 @@ static void test_gpu_picture_optimization(skiatest::Reporter* reporter,
 
             canvas->EXPERIMENTAL_optimize(pict);
 
-            SkPicture::AccelData::Key key = GPUAccelData::ComputeAccelDataKey();
+            SkPicture::AccelData::Key key = GrAccelData::ComputeAccelDataKey();
 
             const SkPicture::AccelData* data = pict->EXPERIMENTAL_getAccelData(key);
             REPORTER_ASSERT(reporter, NULL != data);
 
-            const GPUAccelData *gpuData = static_cast<const GPUAccelData*>(data);
+            const GrAccelData *gpuData = static_cast<const GrAccelData*>(data);
             REPORTER_ASSERT(reporter, 5 == gpuData->numSaveLayers());
 
-            const GPUAccelData::SaveLayerInfo& info0 = gpuData->saveLayerInfo(0);
+            const GrAccelData::SaveLayerInfo& info0 = gpuData->saveLayerInfo(0);
             // The parent/child layer appear in reverse order
-            const GPUAccelData::SaveLayerInfo& info1 = gpuData->saveLayerInfo(2);
-            const GPUAccelData::SaveLayerInfo& info2 = gpuData->saveLayerInfo(1);
-            const GPUAccelData::SaveLayerInfo& info3 = gpuData->saveLayerInfo(3);
-//        const GPUAccelData::SaveLayerInfo& info4 = gpuData->saveLayerInfo(4);
+            const GrAccelData::SaveLayerInfo& info1 = gpuData->saveLayerInfo(2);
+            const GrAccelData::SaveLayerInfo& info2 = gpuData->saveLayerInfo(1);
+            const GrAccelData::SaveLayerInfo& info3 = gpuData->saveLayerInfo(3);
+//        const GrAccelData::SaveLayerInfo& info4 = gpuData->saveLayerInfo(4);
 
             REPORTER_ASSERT(reporter, info0.fValid);
             REPORTER_ASSERT(reporter, kWidth == info0.fSize.fWidth && kHeight == info0.fSize.fHeight);
@@ -918,6 +998,75 @@ static void test_gpu_picture_optimization(skiatest::Reporter* reporter,
 }
 
 #endif
+
+static void test_has_text(skiatest::Reporter* reporter, bool useNewPath) {
+    SkPictureRecorder recorder;
+#define BEGIN_RECORDING useNewPath ? recorder.EXPERIMENTAL_beginRecording(100, 100) \
+                                   : recorder.  DEPRECATED_beginRecording(100, 100)
+
+    SkCanvas* canvas = BEGIN_RECORDING;
+    {
+        canvas->drawRect(SkRect::MakeWH(20, 20), SkPaint());
+    }
+    SkAutoTUnref<SkPicture> picture(recorder.endRecording());
+    REPORTER_ASSERT(reporter, !picture->hasText());
+
+    SkPoint point = SkPoint::Make(10, 10);
+    canvas = BEGIN_RECORDING;
+    {
+        canvas->drawText("Q", 1, point.fX, point.fY, SkPaint());
+    }
+    picture.reset(recorder.endRecording());
+    REPORTER_ASSERT(reporter, picture->hasText());
+
+    canvas = BEGIN_RECORDING;
+    {
+        canvas->drawPosText("Q", 1, &point, SkPaint());
+    }
+    picture.reset(recorder.endRecording());
+    REPORTER_ASSERT(reporter, picture->hasText());
+
+    canvas = BEGIN_RECORDING;
+    {
+        canvas->drawPosTextH("Q", 1, &point.fX, point.fY, SkPaint());
+    }
+    picture.reset(recorder.endRecording());
+    REPORTER_ASSERT(reporter, picture->hasText());
+
+    canvas = BEGIN_RECORDING;
+    {
+        SkPath path;
+        path.moveTo(0, 0);
+        path.lineTo(50, 50);
+
+        canvas->drawTextOnPathHV("Q", 1, path, point.fX, point.fY, SkPaint());
+    }
+    picture.reset(recorder.endRecording());
+    REPORTER_ASSERT(reporter, picture->hasText());
+
+    canvas = BEGIN_RECORDING;
+    {
+        SkPath path;
+        path.moveTo(0, 0);
+        path.lineTo(50, 50);
+
+        canvas->drawTextOnPath("Q", 1, path, NULL, SkPaint());
+    }
+    picture.reset(recorder.endRecording());
+    REPORTER_ASSERT(reporter, picture->hasText());
+
+    // Nest the previous picture inside a new one.
+    // This doesn't work in the old backend.
+    if (useNewPath) {
+        canvas = BEGIN_RECORDING;
+        {
+            canvas->drawPicture(picture.get());
+        }
+        picture.reset(recorder.endRecording());
+        REPORTER_ASSERT(reporter, picture->hasText());
+    }
+#undef BEGIN_RECORDING
+}
 
 static void set_canvas_to_save_count_4(SkCanvas* canvas) {
     canvas->restoreToCount(1);
@@ -1559,8 +1708,13 @@ DEF_TEST(Picture, reporter) {
     test_unbalanced_save_restores(reporter);
     test_peephole();
 #if SK_SUPPORT_GPU
-    test_gpu_veto(reporter);
+    test_gpu_veto(reporter, false);
+    test_gpu_veto(reporter, true);
 #endif
+    test_has_text(reporter, false);
+    test_has_text(reporter, true);
+    test_analysis(reporter, false);
+    test_analysis(reporter, true);
     test_gatherpixelrefs(reporter);
     test_gatherpixelrefsandrects(reporter);
     test_bitmap_with_encoded_data(reporter);
@@ -1657,4 +1811,50 @@ DEF_TEST(DontOptimizeSaveLayerDrawDrawRestore, reporter) {
     // intead of a dark red.
     REPORTER_ASSERT(reporter, replayBM.getColor(30, 30) == 0xff000080);
     REPORTER_ASSERT(reporter, replayBM.getColor(55, 55) == 0xff800000);
+}
+
+struct CountingBBH : public SkBBoxHierarchy {
+    mutable int searchCalls;
+
+    CountingBBH() : searchCalls(0) {}
+
+    virtual void search(const SkIRect& query, SkTDArray<void*>* results) const {
+        this->searchCalls++;
+    }
+
+    // All other methods unimplemented.
+    virtual void insert(void* data, const SkIRect& bounds, bool defer) {}
+    virtual void flushDeferredInserts() {}
+    virtual void clear() {}
+    virtual int getCount() const { return 0; }
+    virtual int getDepth() const { return 0; }
+    virtual void rewindInserts() {}
+};
+
+class SpoonFedBBHFactory : public SkBBHFactory {
+public:
+    explicit SpoonFedBBHFactory(SkBBoxHierarchy* bbh) : fBBH(bbh) {}
+    virtual SkBBoxHierarchy* operator()(int width, int height) const {
+        return SkRef(fBBH);
+    }
+private:
+    SkBBoxHierarchy* fBBH;
+};
+
+// When the canvas clip covers the full picture, we don't need to call the BBH.
+DEF_TEST(Picture_SkipBBH, r) {
+    CountingBBH bbh;
+    SpoonFedBBHFactory factory(&bbh);
+
+    SkPictureRecorder recorder;
+    recorder.beginRecording(320, 240, &factory);
+    SkAutoTUnref<const SkPicture> picture(recorder.endRecording());
+
+    SkCanvas big(640, 480), small(300, 200);
+
+    picture->draw(&big);
+    REPORTER_ASSERT(r, bbh.searchCalls == 0);
+
+    picture->draw(&small);
+    REPORTER_ASSERT(r, bbh.searchCalls == 1);
 }

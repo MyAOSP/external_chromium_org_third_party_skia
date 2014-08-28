@@ -22,6 +22,7 @@
 #include "SkSmallAllocator.h"
 #include "SkSurface_Base.h"
 #include "SkTemplates.h"
+#include "SkTextBlob.h"
 #include "SkTextFormatParams.h"
 #include "SkTLazy.h"
 #include "SkUtils.h"
@@ -385,7 +386,7 @@ SkBaseDevice* SkCanvas::init(SkBaseDevice* device) {
     fCachedLocalClipBoundsDirty = true;
     fAllowSoftClip = true;
     fAllowSimplifyClip = false;
-    fDeviceCMDirty = false;
+    fDeviceCMDirty = true;
     fSaveLayerCount = 0;
     fCullCount = 0;
     fMetaData = NULL;
@@ -398,7 +399,12 @@ SkBaseDevice* SkCanvas::init(SkBaseDevice* device) {
 
     fSurfaceBase = NULL;
 
-    return this->setRootDevice(device);
+    if (device) {
+        device->onAttachToCanvas(this);
+        fMCRec->fLayer->fDevice = SkRef(device);
+        fMCRec->fRasterClip.setRect(SkIRect::MakeWH(device->width(), device->height()));
+    }
+    return device;
 }
 
 SkCanvas::SkCanvas()
@@ -1676,18 +1682,6 @@ const SkMatrix& SkCanvas::getTotalMatrix() const {
     return fMCRec->fMatrix;
 }
 
-#ifdef SK_SUPPORT_LEGACY_GETCLIPTYPE
-SkCanvas::ClipType SkCanvas::getClipType() const {
-    if (fMCRec->fRasterClip.isEmpty()) {
-        return kEmpty_ClipType;
-    }
-    if (fMCRec->fRasterClip.isRect()) {
-        return kRect_ClipType;
-    }
-    return kComplex_ClipType;
-}
-#endif
-
 const SkRegion& SkCanvas::internal_private_getTotalClip() const {
     return fMCRec->fRasterClip.forceGetBW();
 }
@@ -2222,6 +2216,47 @@ void SkCanvas::onDrawTextOnPath(const void* text, size_t byteLength, const SkPat
     LOOPER_END
 }
 
+void SkCanvas::onDrawTextBlob(const SkTextBlob* blob, SkScalar x, SkScalar y,
+                              const SkPaint& paint) {
+    SkASSERT(blob);
+
+    // FIXME: dispatch to the device instead
+
+    if (x || y) {
+        this->translate(x, y);
+    }
+
+    SkPaint runPaint = paint;
+    SkTextBlob::RunIterator it(blob);
+    while (!it.done()) {
+        size_t textLen = it.glyphCount() * sizeof(uint16_t);
+        const SkPoint& offset = it.offset();
+        // applyFontToPaint() always overwrites the exact same attributes,
+        // so it is safe to not re-seed the paint.
+        it.applyFontToPaint(&runPaint);
+
+        switch (it.positioning()) {
+        case SkTextBlob::kDefault_Positioning:
+            this->drawText(it.glyphs(), textLen, offset.x(), offset.y(), runPaint);
+            break;
+        case SkTextBlob::kHorizontal_Positioning:
+            this->drawPosTextH(it.glyphs(), textLen, it.pos(), offset.y(), runPaint);
+            break;
+        case SkTextBlob::kFull_Positioning:
+            this->drawPosText(it.glyphs(), textLen, (const SkPoint*)it.pos(), runPaint);
+            break;
+        default:
+            SkFAIL("unhandled positioning mode");
+        }
+
+        it.next();
+    }
+
+    if (x || y) {
+        this->translate(-x, -y);
+    }
+}
+
 // These will become non-virtual, so they always call the (virtual) onDraw... method
 void SkCanvas::drawText(const void* text, size_t byteLength, SkScalar x, SkScalar y,
                         const SkPaint& paint) {
@@ -2238,6 +2273,12 @@ void SkCanvas::drawPosTextH(const void* text, size_t byteLength, const SkScalar 
 void SkCanvas::drawTextOnPath(const void* text, size_t byteLength, const SkPath& path,
                               const SkMatrix* matrix, const SkPaint& paint) {
     this->onDrawTextOnPath(text, byteLength, path, matrix, paint);
+}
+void SkCanvas::drawTextBlob(const SkTextBlob* blob, SkScalar x, SkScalar y,
+                            const SkPaint& paint) {
+    if (NULL != blob) {
+        this->onDrawTextBlob(blob, x, y, paint);
+    }
 }
 
 void SkCanvas::drawVertices(VertexMode vmode, int vertexCount,
