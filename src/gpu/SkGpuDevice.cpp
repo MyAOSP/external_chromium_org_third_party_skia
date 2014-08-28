@@ -1617,7 +1617,7 @@ void SkGpuDevice::drawVertices(const SkDraw& draw, SkCanvas::VertexMode vmode,
     CHECK_SHOULD_DRAW(draw, false);
 
     GR_CREATE_TRACE_MARKER_CONTEXT("SkGpuDevice::drawVertices", fContext);
-    
+
     const uint16_t* outIndices;
     SkAutoTDeleteArray<uint16_t> outAlloc(NULL);
     GrPrimitiveType primType;
@@ -1625,13 +1625,13 @@ void SkGpuDevice::drawVertices(const SkDraw& draw, SkCanvas::VertexMode vmode,
 
     // If both textures and vertex-colors are NULL, strokes hairlines with the paint's color.
     if ((NULL == texs || NULL == paint.getShader()) && NULL == colors) {
-        
+
         texs = NULL;
-        
+
         SkPaint copy(paint);
         copy.setStyle(SkPaint::kStroke_Style);
         copy.setStrokeWidth(0);
-        
+
         // we ignore the shader if texs is null.
         SkPaint2GrPaintNoShader(this->context(), copy, SkColor2GrColor(copy.getColor()),
                                 NULL == colors, &grPaint);
@@ -1648,13 +1648,13 @@ void SkGpuDevice::drawVertices(const SkDraw& draw, SkCanvas::VertexMode vmode,
                 triangleCount = n - 2;
                 break;
         }
-        
+
         VertState       state(vertexCount, indices, indexCount);
         VertState::Proc vertProc = state.chooseProc(vmode);
-        
+
         //number of indices for lines per triangle with kLines
         indexCount = triangleCount * 6;
-        
+
         outAlloc.reset(SkNEW_ARRAY(uint16_t, indexCount));
         outIndices = outAlloc.get();
         uint16_t* auxIndices = outAlloc.get();
@@ -1671,7 +1671,7 @@ void SkGpuDevice::drawVertices(const SkDraw& draw, SkCanvas::VertexMode vmode,
     } else {
         outIndices = indices;
         primType = gVertexMode2PrimitiveType[vmode];
-        
+
         if (NULL == texs || NULL == paint.getShader()) {
             SkPaint2GrPaintNoShader(this->context(), paint, SkColor2GrColor(paint.getColor()),
                                     NULL == colors, &grPaint);
@@ -1861,11 +1861,7 @@ void SkGpuDevice::EXPERIMENTAL_optimize(const SkPicture* picture) {
         return;
     }
 
-    SkAutoTUnref<GrAccelData> data(SkNEW_ARGS(GrAccelData, (key)));
-
-    picture->EXPERIMENTAL_addAccelData(data);
-
-    GatherGPUInfo(picture, data);
+    GPUOptimize(picture);
 
     fContext->getLayerCache()->trackPicture(picture);
 }
@@ -1879,7 +1875,7 @@ static void wrap_texture(GrTexture* texture, int width, int height, SkBitmap* re
 // Return true if any layers are suitable for hoisting
 bool SkGpuDevice::FindLayersToHoist(const GrAccelData *gpuData,
                                     const SkPicture::OperationList* ops,
-                                    const SkIRect& query,
+                                    const SkRect& query,
                                     bool* pullForward) {
     bool anyHoisted = false;
 
@@ -1929,12 +1925,12 @@ bool SkGpuDevice::FindLayersToHoist(const GrAccelData *gpuData,
         for (int j = 0; j < gpuData->numSaveLayers(); ++j) {
             const GrAccelData::SaveLayerInfo& info = gpuData->saveLayerInfo(j);
 
-            SkIRect layerRect = SkIRect::MakeXYWH(info.fOffset.fX,
-                                                  info.fOffset.fY,
-                                                  info.fSize.fWidth,
-                                                  info.fSize.fHeight);
+            SkRect layerRect = SkRect::MakeXYWH(SkIntToScalar(info.fOffset.fX),
+                                                SkIntToScalar(info.fOffset.fY),
+                                                SkIntToScalar(info.fSize.fWidth),
+                                                SkIntToScalar(info.fSize.fHeight));
 
-            if (!SkIRect::Intersects(query, layerRect)) {
+            if (!SkRect::Intersects(query, layerRect)) {
                 continue;
             }
 
@@ -1986,12 +1982,11 @@ bool SkGpuDevice::EXPERIMENTAL_drawPicture(SkCanvas* mainCanvas, const SkPicture
     if (!mainCanvas->getClipBounds(&clipBounds)) {
         return true;
     }
-    SkIRect query;
-    clipBounds.roundOut(&query);
 
-    SkAutoTDelete<const SkPicture::OperationList> ops(picture->EXPERIMENTAL_getActiveOps(query));
+    SkAutoTDelete<const SkPicture::OperationList> ops(
+            picture->EXPERIMENTAL_getActiveOps(clipBounds));
 
-    if (!FindLayersToHoist(gpuData, ops.get(), query, pullForward.get())) {
+    if (!FindLayersToHoist(gpuData, ops.get(), clipBounds, pullForward.get())) {
         return false;
     }
 
@@ -2008,7 +2003,7 @@ bool SkGpuDevice::EXPERIMENTAL_drawPicture(SkCanvas* mainCanvas, const SkPicture
             GrCachedLayer* layer = fContext->getLayerCache()->findLayerOrCreate(picture->uniqueID(), 
                                                                                 info.fSaveLayerOpID, 
                                                                                 info.fRestoreOpID, 
-                                                                                info.fCTM);
+                                                                                info.fOriginXform);
 
             SkPictureReplacementPlayback::PlaybackReplacements::ReplacementInfo* layerInfo =
                                                                         replacements.push();
@@ -2030,7 +2025,7 @@ bool SkGpuDevice::EXPERIMENTAL_drawPicture(SkCanvas* mainCanvas, const SkPicture
             }
 
             layerInfo->fBM = SkNEW(SkBitmap);  // fBM is allocated so ReplacementInfo can be POD
-            wrap_texture(layer->texture(), 
+            wrap_texture(layer->texture(),
                          !layer->isAtlased() ? desc.fWidth : layer->texture()->width(),
                          !layer->isAtlased() ? desc.fHeight : layer->texture()->height(),
                          layerInfo->fBM);
@@ -2066,7 +2061,7 @@ bool SkGpuDevice::EXPERIMENTAL_drawPicture(SkCanvas* mainCanvas, const SkPicture
 }
 
 void SkGpuDevice::drawLayers(const SkPicture* picture,
-                             const SkTDArray<GrCachedLayer*>& atlased, 
+                             const SkTDArray<GrCachedLayer*>& atlased,
                              const SkTDArray<GrCachedLayer*>& nonAtlased) {
     // Render the atlased layers that require it
     if (atlased.count() > 0) {
@@ -2166,12 +2161,12 @@ void SkGpuDevice::unlockLayers(const SkPicture* picture) {
         GrCachedLayer* layer = fContext->getLayerCache()->findLayer(picture->uniqueID(),
                                                                     info.fSaveLayerOpID,
                                                                     info.fRestoreOpID,
-                                                                    info.fCTM);
+                                                                    info.fOriginXform);
         fContext->getLayerCache()->unlock(layer);
     }
 
 #if DISABLE_CACHING
-    // This code completely clears out the atlas. It is required when 
+    // This code completely clears out the atlas. It is required when
     // caching is disabled so the atlas doesn't fill up and force more
     // free floating layers
     fContext->getLayerCache()->purge(picture->uniqueID());
