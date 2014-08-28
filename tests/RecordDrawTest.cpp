@@ -137,11 +137,9 @@ DEF_TEST(RecordDraw_BBH, r) {
     for (int i = 0; i < bbh.entries.count(); i++) {
         REPORTER_ASSERT(r, bbh.entries[i].data == (uintptr_t)i);
 
-        if (bbh.entries[i].bounds != SkRect::MakeWH(400, 480)) {
-            SkRect bounds = bbh.entries[i].bounds;
-            SkDebugf("Expected 0,0,400,480, got %f %f %f %f\n",
-                     bounds.fLeft, bounds.fTop, bounds.fRight, bounds.fBottom);
-        }
-        REPORTER_ASSERT(r, bbh.entries[i].bounds == SkRect::MakeWH(400, 480));
+        // We'd like to assert bounds == SkRect::MakeWH(400, 480).
+        // But we allow a little slop in recognition that float equality can be weird.
+        REPORTER_ASSERT(r,  SkRect::MakeLTRB(-1, -1, 401, 481).contains(bbh.entries[i].bounds));
+        REPORTER_ASSERT(r, !SkRect::MakeLTRB(+1, +1, 399, 479).contains(bbh.entries[i].bounds));
     }
 }
