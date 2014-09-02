@@ -523,7 +523,9 @@ SkDrawPictureCommand::SkDrawPictureCommand(const SkPicture* picture,
     }
 
     SkString* temp = new SkString;
-    temp->appendf("SkPicture: W: %d H: %d", picture->width(), picture->height());
+    temp->appendf("SkPicture: L: %f T: %f R: %f B: %f",
+                  picture->cullRect().fLeft, picture->cullRect().fTop,
+                  picture->cullRect().fRight, picture->cullRect().fBottom);
     fInfo.push(temp);
     if (NULL != matrix) {
         fInfo.push(SkObjectParser::MatrixToString(*matrix));
@@ -541,9 +543,7 @@ bool SkDrawPictureCommand::render(SkCanvas* canvas) const {
     canvas->clear(0xFFFFFFFF);
     canvas->save();
 
-    SkRect bounds = SkRect::MakeWH(SkIntToScalar(fPicture->width()),
-                                   SkIntToScalar(fPicture->height()));
-    xlate_and_scale_to_bounds(canvas, bounds);
+    xlate_and_scale_to_bounds(canvas, fPicture->cullRect());
 
     canvas->drawPicture(fPicture.get());
 
@@ -664,6 +664,20 @@ SkDrawTextBlobCommand::SkDrawTextBlobCommand(const SkTextBlob* blob, SkScalar x,
 
 void SkDrawTextBlobCommand::execute(SkCanvas* canvas) {
     canvas->drawTextBlob(fBlob, fXPos, fYPos, fPaint);
+}
+
+bool SkDrawTextBlobCommand::render(SkCanvas* canvas) const {
+    canvas->clear(SK_ColorWHITE);
+    canvas->save();
+
+    SkRect bounds = fBlob->bounds().makeOffset(fXPos, fYPos);
+    xlate_and_scale_to_bounds(canvas, bounds);
+
+    canvas->drawTextBlob(fBlob.get(), fXPos, fYPos, fPaint);
+
+    canvas->restore();
+
+    return true;
 }
 
 SkDrawRectCommand::SkDrawRectCommand(const SkRect& rect, const SkPaint& paint)

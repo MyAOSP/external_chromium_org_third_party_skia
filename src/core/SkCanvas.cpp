@@ -22,6 +22,7 @@
 #include "SkSmallAllocator.h"
 #include "SkSurface_Base.h"
 #include "SkTemplates.h"
+#include "SkTextBlob.h"
 #include "SkTextFormatParams.h"
 #include "SkTLazy.h"
 #include "SkUtils.h"
@@ -2217,6 +2218,17 @@ void SkCanvas::onDrawTextOnPath(const void* text, size_t byteLength, const SkPat
 
 void SkCanvas::onDrawTextBlob(const SkTextBlob* blob, SkScalar x, SkScalar y,
                               const SkPaint& paint) {
+
+    // FIXME: temporarily disable quickreject for empty bounds,
+    // pending implicit blob bounds implementation.
+    if (!blob->bounds().isEmpty() && paint.canComputeFastBounds()) {
+        SkRect storage;
+
+        if (this->quickReject(paint.computeFastBounds(blob->bounds().makeOffset(x, y), &storage))) {
+            return;
+        }
+    }
+
     LOOPER_BEGIN(paint, SkDrawFilter::kText_Type, NULL)
 
     while (iter.next()) {
@@ -2445,7 +2457,7 @@ void SkCanvas::onDrawPicture(const SkPicture* picture, const SkMatrix* matrix,
         }
     }
 
-    SkAutoCanvasMatrixPaint acmp(this, matrix, paint, picture->width(), picture->height());
+    SkAutoCanvasMatrixPaint acmp(this, matrix, paint, picture->cullRect());
 
     picture->draw(this);
 }
@@ -2549,16 +2561,16 @@ SkCanvas* SkCanvas::NewRasterDirect(const SkImageInfo& info, void* pixels, size_
 ///////////////////////////////////////////////////////////////////////////////
 
 SkAutoCanvasMatrixPaint::SkAutoCanvasMatrixPaint(SkCanvas* canvas, const SkMatrix* matrix,
-                                                 const SkPaint* paint, int width, int height)
+                                                 const SkPaint* paint, const SkRect& bounds)
     : fCanvas(canvas)
     , fSaveCount(canvas->getSaveCount())
 {
     if (NULL != paint) {
-        SkRect bounds = SkRect::MakeWH(SkIntToScalar(width), SkIntToScalar(height));
+        SkRect newBounds = bounds;
         if (matrix) {
-            matrix->mapRect(&bounds);
+            matrix->mapRect(&newBounds);
         }
-        canvas->saveLayer(&bounds, paint);
+        canvas->saveLayer(&newBounds, paint);
     } else if (NULL != matrix) {
         canvas->save();
     }
