@@ -39,17 +39,5 @@ textblob
 # reed
 matrixconvolution
 
-# Added as part of https://codereview.chromium.org/466363009/
+# jvanverth
 fontcache
-
-# fix broken blurs on android (djsollen)
-# http://skbug.com/2845
-imageblur
-imageblur2
-imagefiltersbase
-imagefiltersclipped
-imagefilterscropped
-imagefiltersgraph
-imagefiltersscaled
-spritebitmap
-testimagefilters
