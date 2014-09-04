@@ -31,18 +31,19 @@ public:
      *  result must be marked isImmutable()
      */
     static void Add(const SkBitmap& src, SkScalar invScaleX, SkScalar invScaleY,
-                    const SkBitmap& result);
+            const SkBitmap& result);
 
     /**
-     *  Search based on the bitmap's genID, width, height. If found, returns true and
+     *  Search based on the bitmap's genID and subset. If found, returns true and
      *  result will be set to the matching bitmap with its pixels already locked.
      */
-    static bool Find(uint32_t genID, int width, int height, SkBitmap* result);
+    static bool Find(uint32_t genID, const SkIRect& subset, SkBitmap* result);
 
-    /*
-     *  result must be marked isImmutable()
+    /**
+     * The width and the height of the provided subset must be the same as the result bitmap ones.
+     * result must be marked isImmutable()
      */
-    static void Add(uint32_t genID, int width, int height, const SkBitmap& result);
+    static bool Add(uint32_t genID, const SkIRect& subset, const SkBitmap& result);
 };
 
 class SkMipMapCache {
