@@ -111,10 +111,20 @@ public:
     SkPicture* clone() const;
 #endif
 
-    /** Replays the drawing commands on the specified canvas.
+    /** Replays the drawing commands on the specified canvas. Note that
+        this has the effect of unfurling this picture into the destination
+        canvas. Using the SkCanvas::drawPicture entry point gives the destination
+        canvas the option of just taking a ref.
         @param canvas the canvas receiving the drawing commands.
+        @param callback a callback that allows interruption of playback
     */
-    void draw(SkCanvas* canvas, SkDrawPictureCallback* = NULL) const;
+    void playback(SkCanvas* canvas, SkDrawPictureCallback* = NULL) const;
+
+#ifdef SK_LEGACY_PICTURE_DRAW_API
+    void draw(SkCanvas* canvas, SkDrawPictureCallback* callback = NULL) const {
+        this->playback(canvas, callback);
+    }
+#endif
 
 #ifdef SK_LEGACY_PICTURE_SIZE_API
     int width() const  { return SkScalarCeilToInt(fCullWidth); }
@@ -286,6 +296,7 @@ private:
     friend class SkPictureData;                // to access OperationList
     friend class SkPictureRecorder;            // just for SkPicture-based constructor
     friend class SkGpuDevice;                  // for fData access
+    friend class GrLayerHoister;               // access to fRecord
     friend class CollectLayers;                // access to fRecord
     friend class SkPicturePlayback;            // to get fData & OperationList
     friend class SkPictureReplacementPlayback; // to access OperationList
