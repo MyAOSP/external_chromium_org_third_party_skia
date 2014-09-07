@@ -42,7 +42,7 @@ public:
     operator T*() { return fObj; }
 
     /** If T is const, the type returned from operator-> will also be const. */
-    typedef typename SkTConstType<typename SkAutoTUnref<T>::BlockRef<T>,
+    typedef typename SkTConstType<typename SkAutoTUnref<T>::template BlockRef<T>,
                                   SkTIsConst<T>::value>::type BlockRefType;
 
     /**
@@ -55,7 +55,7 @@ public:
     }
 
     ~GrProgramElementRef() {
-        if (NULL != fObj) {
+        if (fObj) {
             if (fOwnPendingExec) {
                 fObj->completedExecution();
             } else {

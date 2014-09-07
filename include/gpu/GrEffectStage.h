@@ -13,9 +13,8 @@
 
 #include "GrBackendEffectFactory.h"
 #include "GrEffect.h"
+#include "GrProgramElementRef.h"
 #include "SkMatrix.h"
-#include "GrTypes.h"
-
 #include "SkShader.h"
 
 class GrEffectStage {
@@ -43,8 +42,8 @@ public:
     
     static bool AreCompatible(const GrEffectStage& a, const GrEffectStage& b,
                               bool usingExplicitLocalCoords) {
-        SkASSERT(NULL != a.fEffect.get());
-        SkASSERT(NULL != b.fEffect.get());
+        SkASSERT(a.fEffect.get());
+        SkASSERT(b.fEffect.get());
 
         if (!a.getEffect()->isEqual(*b.getEffect())) {
             return false;
@@ -136,10 +135,12 @@ public:
     const int* getVertexAttribIndices() const { return fVertexAttribIndices; }
     int getVertexAttribIndexCount() const { return fEffect->numVertexAttribs(); }
 
+    void convertToPendingExec() { fEffect.convertToPendingExec(); }
+
 private:
     bool                                fCoordChangeMatrixSet;
     SkMatrix                            fCoordChangeMatrix;
-    SkAutoTUnref<const GrEffect>        fEffect;
+    GrProgramElementRef<const GrEffect> fEffect;
     int                                 fVertexAttribIndices[2];
 };
 

@@ -69,7 +69,9 @@ GrDrawState::GrDrawState(const GrDrawState& state, const SkMatrix& preConcatMatr
 
 GrDrawState& GrDrawState::operator=(const GrDrawState& that) {
     SkASSERT(0 == fBlockEffectRemovalCnt || 0 == this->numTotalStages());
-    this->setRenderTarget(that.fRenderTarget.get());
+    SkASSERT(!that.fRenderTarget.ownsPendingIO());
+    SkASSERT(!this->fRenderTarget.ownsPendingIO());
+    this->setRenderTarget(that.getRenderTarget());
     fColor = that.fColor;
     fViewMatrix = that.fViewMatrix;
     fSrcBlend = that.fSrcBlend;
@@ -103,11 +105,13 @@ GrDrawState& GrDrawState::operator=(const GrDrawState& that) {
 
 void GrDrawState::onReset(const SkMatrix* initialViewMatrix) {
     SkASSERT(0 == fBlockEffectRemovalCnt || 0 == this->numTotalStages());
+    SkASSERT(!fRenderTarget.ownsPendingIO());
+
     fGeometryProcessor.reset(NULL);
     fColorStages.reset();
     fCoverageStages.reset();
 
-    fRenderTarget.reset(NULL);
+    fRenderTarget.reset();
 
     this->setDefaultVertexAttribs();
 
@@ -287,7 +291,7 @@ bool GrDrawState::couldApplyCoverage(const GrDrawTargetCaps& caps) const {
 
 GrDrawState::AutoVertexAttribRestore::AutoVertexAttribRestore(
     GrDrawState* drawState) {
-    SkASSERT(NULL != drawState);
+    SkASSERT(drawState);
     fDrawState = drawState;
     fVAPtr = drawState->fVAPtr;
     fVACount = drawState->fVACount;
@@ -298,8 +302,15 @@ GrDrawState::AutoVertexAttribRestore::AutoVertexAttribRestore(
 //////////////////////////////////////////////////////////////////////////////s
 
 void GrDrawState::AutoRestoreEffects::set(GrDrawState* ds) {
-    if (NULL != fDrawState) {
-        fDrawState->fGeometryProcessor.reset(fGeometryProcessor.detach());
+    if (fDrawState) {
+        // See the big comment on the class definition about GPs.
+        if (SK_InvalidUniqueID == fOriginalGPID) {
+            fDrawState->fGeometryProcessor.reset(NULL);
+        } else {
+            SkASSERT(fDrawState->getGeometryProcessor()->getEffect()->getUniqueID() ==
+                     fOriginalGPID);
+            fOriginalGPID = SK_InvalidUniqueID;
+        }
 
         int m = fDrawState->numColorStages() - fColorEffectCnt;
         SkASSERT(m >= 0);
@@ -315,10 +326,9 @@ void GrDrawState::AutoRestoreEffects::set(GrDrawState* ds) {
     }
     fDrawState = ds;
     if (NULL != ds) {
-        if (ds->hasGeometryProcessor()) {
-            fGeometryProcessor.reset(SkNEW_ARGS(GrEffectStage, (*ds->getGeometryProcessor())));
-        } else {
-            fGeometryProcessor.reset(NULL);
+        SkASSERT(SK_InvalidUniqueID == fOriginalGPID);
+        if (NULL != ds->getGeometryProcessor()) {
+            fOriginalGPID = ds->getGeometryProcessor()->getEffect()->getUniqueID();
         }
         fColorEffectCnt = ds->numColorStages();
         fCoverageEffectCnt = ds->numCoverageStages();
@@ -441,7 +451,7 @@ GrRODrawState::BlendOptFlags GrDrawState::calcBlendOpts(bool forceCoverage,
 ////////////////////////////////////////////////////////////////////////////////
 
 void GrDrawState::AutoViewMatrixRestore::restore() {
-    if (NULL != fDrawState) {
+    if (fDrawState) {
         SkDEBUGCODE(--fDrawState->fBlockEffectRemovalCnt;)
         fDrawState->fViewMatrix = fViewMatrix;
         SkASSERT(fDrawState->numColorStages() >= fNumColorStages);
@@ -603,4 +613,3 @@ bool GrDrawState::canIgnoreColorAttribute() const {
     return SkToBool(fBlendOptFlags & (GrRODrawState::kEmitTransBlack_BlendOptFlag |
                                       GrRODrawState::kEmitCoverage_BlendOptFlag));
 }
-

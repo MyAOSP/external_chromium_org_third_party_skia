@@ -8,13 +8,13 @@
 #ifndef GrRODrawState_DEFINED
 #define GrRODrawState_DEFINED
 
-#include "GrStencil.h"
 #include "GrEffectStage.h"
+#include "GrRenderTarget.h"
+#include "GrStencil.h"
 #include "SkMatrix.h"
 
 class GrDrawTargetCaps;
 class GrPaint;
-class GrRenderTarget;
 class GrTexture;
 
 /**
@@ -126,7 +126,7 @@ public:
                  (this->hasGeometryProcessor() ? 1 : 0);
     }
 
-    bool hasGeometryProcessor() const { return NULL != fGeometryProcessor.get(); }
+    bool hasGeometryProcessor() const { return SkToBool(fGeometryProcessor.get()); }
     const GrEffectStage* getGeometryProcessor() const { return fGeometryProcessor.get(); }
     const GrEffectStage& getColorStage(int stageIdx) const { return fColorStages[stageIdx]; }
     const GrEffectStage& getCoverageStage(int stageIdx) const { return fCoverageStages[stageIdx]; }
@@ -243,7 +243,9 @@ public:
      *
      * @return    The currently set render target.
      */
-    GrRenderTarget* getRenderTarget() const { return fRenderTarget.get(); }
+    GrRenderTarget* getRenderTarget() const {
+        return static_cast<GrRenderTarget*>(fRenderTarget.getResource());
+    }
 
     /// @}
 
@@ -345,10 +347,23 @@ public:
     };
 
 protected:
+    /**
+     * Converts refs on GrGpuResources owned directly or indirectly by this GrRODrawState into
+     * pending reads and writes. This should be called when a GrDrawState is recorded into
+     * a GrDrawTarget for later execution. Subclasses of GrRODrawState may add setters. However,
+     * once this call has been made the GrRODrawState is immutable. It is also no longer copyable.
+     * In the future this conversion will automatically happen when converting a GrDrawState into
+     * an optimized draw state.
+     */
+    void convertToPendingExec();
+
+    friend class GrDrawTarget;
+
+protected:
     bool isEqual(const GrRODrawState& that) const;
 
     // These fields are roughly sorted by decreasing likelihood of being different in op==
-    SkAutoTUnref<GrRenderTarget>        fRenderTarget;
+    GrProgramResource                   fRenderTarget;
     GrColor                             fColor;
     SkMatrix                            fViewMatrix;
     GrColor                             fBlendConstant;

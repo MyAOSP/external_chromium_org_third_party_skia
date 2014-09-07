@@ -16,7 +16,7 @@ bool GrRODrawState::isEqual(const GrRODrawState& that) const {
         return false;
     }
 
-    if (this->fRenderTarget.get() != that.fRenderTarget.get() ||
+    if (this->getRenderTarget() != that.getRenderTarget() ||
         this->fColorStages.count() != that.fColorStages.count() ||
         this->fCoverageStages.count() != that.fCoverageStages.count() ||
         !this->fViewMatrix.cheapEqualTo(that.fViewMatrix) ||
@@ -40,14 +40,14 @@ bool GrRODrawState::isEqual(const GrRODrawState& that) const {
     bool explicitLocalCoords = this->hasLocalCoordAttribute();
     if (this->hasGeometryProcessor()) {
         if (!that.hasGeometryProcessor()) {
-            return kIncompatible_CombinedState;
+            return false;
         } else if (!GrEffectStage::AreCompatible(*this->getGeometryProcessor(),
                                                  *that.getGeometryProcessor(),
                                                  explicitLocalCoords)) {
-            return kIncompatible_CombinedState;
+            return false;
         }
     } else if (that.hasGeometryProcessor()) {
-        return kIncompatible_CombinedState;
+        return false;
     }
 
     for (int i = 0; i < this->numColorStages(); i++) {
@@ -82,7 +82,7 @@ bool GrRODrawState::validateVertexAttribs() const {
     if (this->hasGeometryProcessor()) {
         const GrEffectStage& stage = *this->getGeometryProcessor();
         const GrEffect* effect = stage.getEffect();
-        SkASSERT(NULL != effect);
+        SkASSERT(effect);
         // make sure that any attribute indices have the correct binding type, that the attrib
         // type and effect's shader lang type are compatible, and that attributes shared by
         // multiple effects use the same shader lang type.
@@ -184,3 +184,16 @@ bool GrRODrawState::canTweakAlphaForCoverage() const {
            this->isCoverageDrawing();
 }
 
+void GrRODrawState::convertToPendingExec() {
+    fRenderTarget.markPendingIO();
+    fRenderTarget.removeRef();
+    for (int i = 0; i < fColorStages.count(); ++i) {
+        fColorStages[i].convertToPendingExec();
+    }
+    if (fGeometryProcessor) {
+        fGeometryProcessor->convertToPendingExec();
+    }
+    for (int i = 0; i < fCoverageStages.count(); ++i) {
+        fCoverageStages[i].convertToPendingExec();
+    }
+}
