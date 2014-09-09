@@ -6,7 +6,6 @@
  */
 
 #include "DMPDFRasterizeTask.h"
-#include "DMExpectationsTask.h"
 #include "DMUtil.h"
 #include "DMWriteTask.h"
 #include "SkBitmap.h"
@@ -30,7 +29,7 @@ void PDFRasterizeTask::draw() {
     SkBitmap bitmap;
 
     if (fRasterize(fPdf.get(), &bitmap)) {
-        this->spawnChild(SkNEW_ARGS(WriteTask, (*this, bitmap)));
+        this->spawnChild(SkNEW_ARGS(WriteTask, (*this, "PDF", bitmap)));
     } else {
         this->fail();
     }
