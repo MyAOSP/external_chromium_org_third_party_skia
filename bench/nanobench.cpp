@@ -12,6 +12,7 @@
 #include "GMBench.h"
 #include "ProcStats.h"
 #include "ResultsWriter.h"
+#include "RecordingBench.h"
 #include "SKPBench.h"
 #include "Stats.h"
 #include "Timer.h"
@@ -163,7 +164,7 @@ static int cpu_bench(const double overhead, Benchmark* bench, SkCanvas* canvas, 
         while (bench_plus_overhead < overhead) {
             if (round++ == FLAGS_maxCalibrationAttempts) {
                 SkDebugf("WARNING: Can't estimate loops for %s (%s vs. %s); skipping.\n",
-                         bench->getName(), HUMANIZE(bench_plus_overhead), HUMANIZE(overhead));
+                         bench->getUniqueName(), HUMANIZE(bench_plus_overhead), HUMANIZE(overhead));
                 return kFailedLoops;
             }
             bench_plus_overhead = time(1, bench, canvas, NULL);
@@ -407,6 +408,7 @@ class BenchmarkStream {
 public:
     BenchmarkStream() : fBenches(BenchRegistry::Head())
                       , fGMs(skiagm::GMRegistry::Head())
+                      , fCurrentRecording(0)
                       , fCurrentScale(0)
                       , fCurrentSKP(0) {
         for (int i = 0; i < FLAGS_skps.count(); i++) {
@@ -435,11 +437,33 @@ public:
         }
     }
 
+    static bool ReadPicture(const char* path, SkAutoTUnref<SkPicture>* pic) {
+        // Not strictly necessary, as it will be checked again later,
+        // but helps to avoid a lot of pointless work if we're going to skip it.
+        if (SkCommandLineFlags::ShouldSkip(FLAGS_match, path)) {
+            return false;
+        }
+
+        SkAutoTUnref<SkStream> stream(SkStream::NewFromFile(path));
+        if (stream.get() == NULL) {
+            SkDebugf("Could not read %s.\n", path);
+            return false;
+        }
+
+        pic->reset(SkPicture::CreateFromStream(stream.get()));
+        if (pic->get() == NULL) {
+            SkDebugf("Could not read %s as an SkPicture.\n", path);
+            return false;
+        }
+        return true;
+    }
+
     Benchmark* next() {
         if (fBenches) {
             Benchmark* bench = fBenches->factory()(NULL);
             fBenches = fBenches->next();
             fSourceType = "bench";
+            fBenchType  = "micro";
             return bench;
         }
 
@@ -448,34 +472,32 @@ public:
             fGMs = fGMs->next();
             if (gm->getFlags() & skiagm::GM::kAsBench_Flag) {
                 fSourceType = "gm";
+                fBenchType  = "micro";
                 return SkNEW_ARGS(GMBench, (gm.detach()));
             }
         }
 
+        // First add all .skps as RecordingBenches.
+        while (fCurrentRecording < fSKPs.count()) {
+            const SkString& path = fSKPs[fCurrentRecording++];
+            SkAutoTUnref<SkPicture> pic;
+            if (!ReadPicture(path.c_str(), &pic)) {
+                continue;
+            }
+            SkString name = SkOSPath::Basename(path.c_str());
+            fSourceType = "skp";
+            fBenchType  = "recording";
+            return SkNEW_ARGS(RecordingBench, (name.c_str(), pic.get(), FLAGS_bbh));
+        }
+
+        // Then once each for each scale as SKPBenches (playback).
         while (fCurrentScale < fScales.count()) {
             while (fCurrentSKP < fSKPs.count()) {
                 const SkString& path = fSKPs[fCurrentSKP++];
-
-                // Not strictly necessary, as it will be checked again later,
-                // but helps to avoid a lot of pointless work if we're going to skip it.
-                if (SkCommandLineFlags::ShouldSkip(FLAGS_match, path.c_str())) {
+                SkAutoTUnref<SkPicture> pic;
+                if (!ReadPicture(path.c_str(), &pic)) {
                     continue;
                 }
-
-                SkAutoTUnref<SkStream> stream(SkStream::NewFromFile(path.c_str()));
-                if (stream.get() == NULL) {
-                    SkDebugf("Could not read %s.\n", path.c_str());
-                    exit(1);
-                }
-
-                SkAutoTUnref<SkPicture> pic(SkPicture::CreateFromStream(stream.get()));
-                if (pic.get() == NULL) {
-                    SkDebugf("Could not read %s as an SkPicture.\n", path.c_str());
-                    exit(1);
-                }
-
-                SkString name = SkOSPath::Basename(path.c_str());
-
                 if (FLAGS_bbh) {
                     // The SKP we read off disk doesn't have a BBH.  Re-record so it grows one.
                     // Here we use an SkTileGrid with parameters optimized for FLAGS_clip.
@@ -491,8 +513,9 @@ public:
                                                           &factory));
                     pic.reset(recorder.endRecording());
                 }
-
+                SkString name = SkOSPath::Basename(path.c_str());
                 fSourceType = "skp";
+                fBenchType  = "playback";
                 return SkNEW_ARGS(SKPBench,
                         (name.c_str(), pic.get(), fClip, fScales[fCurrentScale]));
             }
@@ -505,6 +528,7 @@ public:
 
     void fillCurrentOptions(ResultsWriter* log) const {
         log->configOption("source_type", fSourceType);
+        log->configOption("bench_type",  fBenchType);
         if (0 == strcmp(fSourceType, "skp")) {
             log->configOption("clip",
                     SkStringPrintf("%d %d %d %d", fClip.fLeft, fClip.fTop,
@@ -520,7 +544,9 @@ private:
     SkTArray<SkScalar> fScales;
     SkTArray<SkString> fSKPs;
 
-    const char* fSourceType;
+    const char* fSourceType;  // What we're benching: bench, GM, SKP, ...
+    const char* fBenchType;   // How we bench it: micro, recording, playback, ...
+    int fCurrentRecording;
     int fCurrentScale;
     int fCurrentSKP;
 };
@@ -592,7 +618,7 @@ int nanobench_main() {
     BenchmarkStream benchStream;
     while (Benchmark* b = benchStream.next()) {
         SkAutoTDelete<Benchmark> bench(b);
-        if (SkCommandLineFlags::ShouldSkip(FLAGS_match, bench->getName())) {
+        if (SkCommandLineFlags::ShouldSkip(FLAGS_match, bench->getUniqueName())) {
             continue;
         }
 
@@ -600,7 +626,7 @@ int nanobench_main() {
         create_targets(&targets, bench.get(), configs);
 
         if (!targets.isEmpty()) {
-            log->bench(bench->getName(), bench->getSize().fX, bench->getSize().fY);
+            log->bench(bench->getUniqueName(), bench->getSize().fX, bench->getSize().fY);
             bench->preDraw();
         }
         for (int j = 0; j < targets.count(); j++) {
@@ -617,7 +643,7 @@ int nanobench_main() {
 
             if (canvas && !FLAGS_writePath.isEmpty() && FLAGS_writePath[0]) {
                 SkString pngFilename = SkOSPath::Join(FLAGS_writePath[0], config);
-                pngFilename = SkOSPath::Join(pngFilename.c_str(), bench->getName());
+                pngFilename = SkOSPath::Join(pngFilename.c_str(), bench->getUniqueName());
                 pngFilename.append(".png");
                 write_canvas_png(canvas, pngFilename);
             }
@@ -629,6 +655,7 @@ int nanobench_main() {
 
             Stats stats(samples.get(), FLAGS_samples);
             log->config(config);
+            log->configOption("name", bench->getName());
             benchStream.fillCurrentOptions(log.get());
 #if SK_SUPPORT_GPU
             if (Benchmark::kGPU_Backend == targets[j]->config.backend) {
@@ -645,17 +672,17 @@ int nanobench_main() {
                 if (targets.count() == 1) {
                     config = ""; // Only print the config if we run the same bench on more than one.
                 }
-                SkDebugf("%s\t%s\n", bench->getName(), config);
+                SkDebugf("%s\t%s\n", bench->getUniqueName(), config);
             } else if (FLAGS_verbose) {
                 for (int i = 0; i < FLAGS_samples; i++) {
                     SkDebugf("%s  ", HUMANIZE(samples[i]));
                 }
-                SkDebugf("%s\n", bench->getName());
+                SkDebugf("%s\n", bench->getUniqueName());
             } else if (FLAGS_quiet) {
                 if (targets.count() == 1) {
                     config = ""; // Only print the config if we run the same bench on more than one.
                 }
-                SkDebugf("%s\t%s\t%s\n", HUMANIZE(stats.median), bench->getName(), config);
+                SkDebugf("%s\t%s\t%s\n", HUMANIZE(stats.median), bench->getUniqueName(), config);
             } else {
                 const double stddev_percent = 100 * sqrt(stats.var) / stats.mean;
                 SkDebugf("%4dM\t%d\t%s\t%s\t%s\t%s\t%.0f%%\t%s\t%s\t%s\n"
@@ -668,7 +695,7 @@ int nanobench_main() {
                         , stddev_percent
                         , stats.plot.c_str()
                         , config
-                        , bench->getName()
+                        , bench->getUniqueName()
                         );
             }
         }
