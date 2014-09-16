@@ -45,15 +45,15 @@ public:
         static const GrGLfloat kRec601ConversionMatrix[16];
 
         // this class always generates the same code.
-        static void GenKey(const GrDrawEffect&, const GrGLCaps&, GrEffectKeyBuilder*) {}
+        static void GenKey(const GrEffect&, const GrGLCaps&, GrEffectKeyBuilder*) {}
 
         GLEffect(const GrBackendEffectFactory& factory,
-                 const GrDrawEffect&)
+                 const GrEffect&)
         : INHERITED(factory) {
         }
 
         virtual void emitCode(GrGLProgramBuilder* builder,
-                              const GrDrawEffect& drawEffect,
+                              const GrEffect&,
                               const GrEffectKey&,
                               const char* outputColor,
                               const char* inputColor,
@@ -75,8 +75,8 @@ public:
         }
 
         virtual void setData(const GrGLProgramDataManager& pdman,
-                             const GrDrawEffect& drawEffect) SK_OVERRIDE {
-            const YUVtoRGBEffect& yuvEffect = drawEffect.castEffect<YUVtoRGBEffect>();
+                             const GrEffect& effect) SK_OVERRIDE {
+            const YUVtoRGBEffect& yuvEffect = effect.cast<YUVtoRGBEffect>();
             switch (yuvEffect.getColorSpace()) {
                 case kJPEG_SkYUVColorSpace:
                     pdman.setMatrix4f(fMatrixUni, kJPEGConversionMatrix);
@@ -110,7 +110,7 @@ private:
     }
 
     virtual bool onIsEqual(const GrEffect& sBase) const {
-        const YUVtoRGBEffect& s = CastEffect<YUVtoRGBEffect>(sBase);
+        const YUVtoRGBEffect& s = sBase.cast<YUVtoRGBEffect>();
         return fYAccess.getTexture() == s.fYAccess.getTexture() &&
                fUAccess.getTexture() == s.fUAccess.getTexture() &&
                fVAccess.getTexture() == s.fVAccess.getTexture() &&
@@ -132,8 +132,8 @@ const GrGLfloat YUVtoRGBEffect::GLEffect::kJPEGConversionMatrix[16] = {
     1.0f,  1.772f,    0.0f,    -0.886f,
     0.0f,  0.0f,      0.0f,     1.0};
 const GrGLfloat YUVtoRGBEffect::GLEffect::kRec601ConversionMatrix[16] = {
-    1.164f,  0.0f,    1.596f, -1.08175f,
-    1.164f, -0.391f, -0.813f,  0.529f,
+    1.164f,  0.0f,    1.596f, -0.87075f,
+    1.164f, -0.391f, -0.813f,  0.52925f,
     1.164f,  2.018f,  0.0f,   -1.08175f,
     0.0f,    0.0f,    0.0f,    1.0};
 }
