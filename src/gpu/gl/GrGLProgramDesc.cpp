@@ -163,7 +163,7 @@ bool GrGLProgramDesc::Build(const GrOptDrawState& optState,
                             GrGpu::DrawType drawType,
                             GrBlendCoeff srcCoeff,
                             GrBlendCoeff dstCoeff,
-                            const GrGpuGL* gpu,
+                            GrGpuGL* gpu,
                             const GrDeviceCoordTexture* dstCopy,
                             const GrEffectStage** geometryProcessor,
                             SkTArray<const GrEffectStage*, true>* colorStages,
@@ -260,12 +260,11 @@ bool GrGLProgramDesc::Build(const GrOptDrawState& optState,
     // Because header is a pointer into the dynamic array, we can't push any new data into the key
     // below here.
 
-    // We will only require a vertex shader if we have more than just the position VA attrib.
-    // If we have a geom processor we must us a vertex shader and we should not have a geometry
-    // processor if we are doing path rendering.
-    SkASSERT(!GrGpu::IsPathRenderingDrawType(drawType) || !optState.requiresVertexShader());
-    header->fRequiresVertexShader = optState.requiresVertexShader() ||
-                                    !GrGpu::IsPathRenderingDrawType(drawType);
+    header->fUseFragShaderOnly = gpu->caps()->pathRenderingSupport() &&
+        GrGpu::IsPathRenderingDrawType(drawType) &&
+        gpu->glPathRendering()->texturingMode() == GrGLPathRendering::FixedFunction_TexturingMode;
+    SkASSERT(!header->fUseFragShaderOnly || !optState.hasGeometryProcessor());
+
     header->fEmitsPointSize = GrGpu::kDrawPoints_DrawType == drawType;
 
     // Currently the experimental GS will only work with triangle prims (and it doesn't do anything
@@ -277,7 +276,7 @@ bool GrGLProgramDesc::Build(const GrOptDrawState& optState,
     header->fExperimentalGS = false;
 #endif
 #endif
-    bool defaultToUniformInputs = GR_GL_NO_CONSTANT_ATTRIBUTES || gpu->caps()->pathRenderingSupport();
+    bool defaultToUniformInputs = GR_GL_NO_CONSTANT_ATTRIBUTES || header->fUseFragShaderOnly;
 
     if (!inputColorIsUsed) {
         header->fColorInput = kAllOnes_ColorInput;
@@ -285,7 +284,7 @@ bool GrGLProgramDesc::Build(const GrOptDrawState& optState,
         header->fColorInput = kUniform_ColorInput;
     } else {
         header->fColorInput = kAttribute_ColorInput;
-        header->fRequiresVertexShader = true;
+        header->fUseFragShaderOnly = false;
     }
 
     bool covIsSolidWhite = !requiresCoverageAttrib && 0xffffffff == optState.getCoverageColor();
@@ -296,7 +295,7 @@ bool GrGLProgramDesc::Build(const GrOptDrawState& optState,
         header->fCoverageInput = kUniform_ColorInput;
     } else {
         header->fCoverageInput = kAttribute_ColorInput;
-        header->fRequiresVertexShader = true;
+        header->fUseFragShaderOnly = false;
     }
 
     if (optState.readsDst()) {
@@ -344,51 +343,14 @@ bool GrGLProgramDesc::Build(const GrOptDrawState& optState,
         header->fCoverageAttributeIndex = -1;
     }
 
-    // Here we deal with whether/how we handle color and coverage separately.
-
-    // Set this default and then possibly change our mind if there is coverage.
-    header->fCoverageOutput = kModulate_CoverageOutput;
-
-    // If we do have coverage determine whether it matters.
-    bool separateCoverageFromColor = optState.hasGeometryProcessor();
-    if (!optState.isCoverageDrawing() &&
-        (optState.numCoverageStages() > 0 ||
-         optState.hasGeometryProcessor() ||
-         requiresCoverageAttrib)) {
-
-        if (gpu->caps()->dualSourceBlendingSupport()) {
-            if (kZero_GrBlendCoeff == dstCoeff) {
-                // write the coverage value to second color
-                header->fCoverageOutput =  kSecondaryCoverage_CoverageOutput;
-                separateCoverageFromColor = true;
-            } else if (kSA_GrBlendCoeff == dstCoeff) {
-                // SA dst coeff becomes 1-(1-SA)*coverage when dst is partially covered.
-                header->fCoverageOutput = kSecondaryCoverageISA_CoverageOutput;
-                separateCoverageFromColor = true;
-            } else if (kSC_GrBlendCoeff == dstCoeff) {
-                // SA dst coeff becomes 1-(1-SA)*coverage when dst is partially covered.
-                header->fCoverageOutput = kSecondaryCoverageISC_CoverageOutput;
-                separateCoverageFromColor = true;
-            }
-        } else if (optState.readsDst() &&
-                   kOne_GrBlendCoeff == srcCoeff &&
-                   kZero_GrBlendCoeff == dstCoeff) {
-            header->fCoverageOutput = kCombineWithDst_CoverageOutput;
-            separateCoverageFromColor = true;
-        }
-    }
+    header->fPrimaryOutputType = optState.getPrimaryOutputType();
+    header->fSecondaryOutputType = optState.getSecondaryOutputType();
 
     for (int s = 0; s < optState.numColorStages(); ++s) {
         colorStages->push_back(&optState.getColorStage(s));
     }
-    SkTArray<const GrEffectStage*, true>* array;
-    if (separateCoverageFromColor) {
-        array = coverageStages;
-    } else {
-        array = colorStages;
-    }
     for (int s = 0; s < optState.numCoverageStages(); ++s) {
-        array->push_back(&optState.getCoverageStage(s));
+        coverageStages->push_back(&optState.getCoverageStage(s));
     }
 
     header->fColorEffectCnt = colorStages->count();
