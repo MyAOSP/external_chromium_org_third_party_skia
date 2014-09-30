@@ -36,6 +36,10 @@ DEFINE_int32(maxComponentDiff, 256, "Maximum diff on a component, 0 - 256. Compo
              "Requires --validate.");
 DEFINE_string(mismatchPath, "", "Write images for tests that failed due to "
               "pixel mismatches into this directory.");
+#if GR_GPU_STATS
+DEFINE_bool(gpuStats, false, "Only meaningful with gpu configurations. "
+            "Report some GPU call statistics.");
+#endif
 DEFINE_bool(preprocess, false, "If true, perform device specific preprocessing before rendering.");
 DEFINE_string(readJsonSummaryPath, "", "JSON file to read image expectations from.");
 DECLARE_string(readPath);
@@ -145,11 +149,11 @@ static bool render_picture_internal(const SkString& inputPath, const SkString* w
                                     SkBitmap** out) {
     SkString inputFilename = SkOSPath::Basename(inputPath.c_str());
     SkString writePathString;
-    if (NULL != writePath && writePath->size() > 0 && !FLAGS_writeEncodedImages) {
+    if (writePath && writePath->size() > 0 && !FLAGS_writeEncodedImages) {
         writePathString.set(*writePath);
     }
     SkString mismatchPathString;
-    if (NULL != mismatchPath && mismatchPath->size() > 0) {
+    if (mismatchPath && mismatchPath->size() > 0) {
         mismatchPathString.set(*mismatchPath);
     }
 
@@ -184,24 +188,30 @@ static bool render_picture_internal(const SkString& inputPath, const SkString* w
         // Because the GPU preprocessing step relies on the in-memory picture
         // statistics we need to rerecord the picture here
         SkPictureRecorder recorder;
-        picture->draw(recorder.beginRecording(picture->width(), picture->height(), NULL, 0));
+        picture->playback(recorder.beginRecording(picture->cullRect().width(), 
+                                                  picture->cullRect().height(), 
+                                                  NULL, 0));
         picture.reset(recorder.endRecording());
     }
 
     while (FLAGS_bench_record) {
         SkPictureRecorder recorder;
-        picture->draw(recorder.beginRecording(picture->width(), picture->height(), NULL, 0));
+        picture->playback(recorder.beginRecording(picture->cullRect().width(), 
+                                                  picture->cullRect().height(), 
+                                                  NULL, 0));
         SkAutoTUnref<SkPicture> other(recorder.endRecording());
     }
 
-    SkDebugf("drawing... [%i %i] %s\n", picture->width(), picture->height(),
+    SkDebugf("drawing... [%f %f %f %f] %s\n", 
+             picture->cullRect().fLeft, picture->cullRect().fTop,
+             picture->cullRect().fRight, picture->cullRect().fBottom,
              inputPath.c_str());
 
     renderer.init(picture, &writePathString, &mismatchPathString, &inputFilename,
                   FLAGS_writeChecksumBasedFilenames);
 
     if (FLAGS_preprocess) {
-        if (NULL != renderer.getCanvas()) {
+        if (renderer.getCanvas()) {
             renderer.getCanvas()->EXPERIMENTAL_optimize(renderer.getPicture());
         }
     }
@@ -244,7 +254,7 @@ public:
     }
 
     ~AutoRestoreBbhType() {
-        if (NULL != fRenderer) {
+        if (fRenderer) {
             fRenderer->setBBoxHierarchyType(fSavedBbhType);
         }
     }
@@ -363,17 +373,17 @@ static bool render_picture(const SkString& inputPath, const SkString* writePath,
         sk_tools::replace_char(&outputFilename, '.', '_');
         outputFilename.append(".png");
 
-        if (NULL != jsonSummaryPtr) {
+        if (jsonSummaryPtr) {
             sk_tools::ImageDigest imageDigest(*bitmap);
             jsonSummaryPtr->add(inputFilename.c_str(), outputFilename.c_str(), imageDigest);
-            if ((NULL != mismatchPath) && !mismatchPath->isEmpty() &&
+            if ((mismatchPath) && !mismatchPath->isEmpty() &&
                 !jsonSummaryPtr->getExpectation(inputFilename.c_str()).matches(imageDigest)) {
                 success &= sk_tools::write_bitmap_to_disk(*bitmap, *mismatchPath, NULL,
                                                           outputFilename);
             }
         }
 
-        if ((NULL != writePath) && !writePath->isEmpty()) {
+        if ((writePath) && !writePath->isEmpty()) {
             success &= sk_tools::write_bitmap_to_disk(*bitmap, *writePath, NULL, outputFilename);
         }
     }
@@ -488,6 +498,13 @@ int tool_main(int argc, char** argv) {
 #ifdef SK_DEVELOPER
         ctx->dumpFontCache();
 #endif
+    }
+#endif
+#if GR_GPU_STATS
+    if (FLAGS_gpuStats && renderer->isUsingGpuDevice()) {
+        GrContext* ctx = renderer->getGrContext();
+        SkDebugf("RenderTarget Binds: %d\n", ctx->gpuStats()->renderTargetBinds());
+        SkDebugf("Shader Compilations: %d\n", ctx->gpuStats()->shaderCompilations());
     }
 #endif
 #endif

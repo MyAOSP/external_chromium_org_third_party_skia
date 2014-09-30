@@ -7,6 +7,7 @@
     'SK_SUPPORT_OPENCL=<(skia_opencl)',
     'SK_FORCE_DISTANCEFIELD_FONTS=<(skia_force_distancefield_fonts)',
     'SK_PICTURE_USE_SK_RECORD',
+    'SK_PICTURE_OPTIMIZE_SK_RECORD',
   ],
   'conditions' : [
     ['skia_pic', {
@@ -44,10 +45,11 @@
           'GR_GL_FUNCTION_TYPE=__stdcall',
         ],
         'msvs_disabled_warnings': [
-            4345,  # This is an FYI about a behavior change from long ago.  Chrome stifles it too.
+            4275,  # An exported class was derived from a class that was not exported
+            4345,  # This is an FYI about a behavior change from long ago. Chrome stifles it too.
+            4355,  # 'this' used in base member initializer list. Off by default in newer compilers.
         ],
         'msvs_cygwin_shell': 0,
-        'msvs_disabled_warnings': [4275],
         'msvs_settings': {
           'VCCLCompilerTool': {
             'WarningLevel': '3',
@@ -578,7 +580,6 @@
           },
           'Release': {
             'cflags': ['-O2'],
-            'defines': [ 'NDEBUG' ],
           },
         },
         'libraries': [

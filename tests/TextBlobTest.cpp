@@ -175,9 +175,6 @@ private:
         }
 
         SkAutoTUnref<const SkTextBlob> blob(builder.build());
-        REPORTER_ASSERT(reporter, (NULL != blob->fGlyphBuffer) == (glyphCount > 0));
-        REPORTER_ASSERT(reporter, (NULL != blob->fPosBuffer) == (posCount > 0));
-        REPORTER_ASSERT(reporter, (NULL != blob->fRuns.get()) == (inCount > 0));
 
         SkTextBlob::RunIterator it(blob);
         for (unsigned i = 0; i < outCount; ++i) {

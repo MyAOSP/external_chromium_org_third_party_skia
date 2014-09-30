@@ -33,17 +33,11 @@
 ## epoger will rebaseline by 25 Dec 2013
 #gradtext
 
-# mtklein will rebaseline https://codereview.chromium.org/474983007/ (skbug.com/2797)
-gpusamplerstress
-shadertext3
-pictures
-gradtext
-gradients_view_perspective
-drawbitmaprect
-drawbitmapmatrix
+# jvanverth
+fontcache
 
-# To be rebaselined (fmalita)
-textblob
+# reed - conservative_rasterclip CL
+multipicturedraw_pathclip_tiled
 
-# reed
-matrixconvolution
+# rileya - https://codereview.chromium.org/516463005/ will rebaseline after bots cycle
+yuv_to_rgb_effect

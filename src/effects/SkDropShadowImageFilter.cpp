@@ -17,8 +17,9 @@
 
 SkDropShadowImageFilter::SkDropShadowImageFilter(SkScalar dx, SkScalar dy,
                                                  SkScalar sigmaX, SkScalar sigmaY, SkColor color,
-                                                 SkImageFilter* input, const CropRect* cropRect)
-    : INHERITED(1, &input, cropRect)
+                                                 SkImageFilter* input, const CropRect* cropRect,
+                                                 uint32_t uniqueID)
+    : INHERITED(1, &input, cropRect, uniqueID)
     , fDx(dx)
     , fDy(dy)
     , fSigmaX(sigmaX)
@@ -49,7 +50,7 @@ SkFlattenable* SkDropShadowImageFilter::CreateProc(SkReadBuffer& buffer) {
     SkScalar sigmaX = buffer.readScalar();
     SkScalar sigmaY = buffer.readScalar();
     SkColor color = buffer.readColor();
-    return Create(dx, dy, sigmaX, sigmaY, color, common.getInput(0), &common.cropRect());
+    return Create(dx, dy, sigmaX, sigmaY, color, common.getInput(0), &common.cropRect(), common.uniqueID());
 }
 
 void SkDropShadowImageFilter::flatten(SkWriteBuffer& buffer) const {
@@ -121,9 +122,6 @@ void SkDropShadowImageFilter::computeFastBounds(const SkRect& src, SkRect* dst) 
 bool SkDropShadowImageFilter::onFilterBounds(const SkIRect& src, const SkMatrix& ctm,
                                              SkIRect* dst) const {
     SkIRect bounds = src;
-    if (getInput(0) && !getInput(0)->filterBounds(src, ctm, &bounds)) {
-        return false;
-    }
     SkVector offsetVec = SkVector::Make(fDx, fDy);
     ctm.mapVectors(&offsetVec, 1);
     bounds.offset(-SkScalarCeilToInt(offsetVec.x()),
@@ -133,6 +131,9 @@ bool SkDropShadowImageFilter::onFilterBounds(const SkIRect& src, const SkMatrix&
     bounds.outset(SkScalarCeilToInt(SkScalarMul(sigma.x(), SkIntToScalar(3))),
                   SkScalarCeilToInt(SkScalarMul(sigma.y(), SkIntToScalar(3))));
     bounds.join(src);
+    if (getInput(0) && !getInput(0)->filterBounds(bounds, ctm, &bounds)) {
+        return false;
+    }
     *dst = bounds;
     return true;
 }

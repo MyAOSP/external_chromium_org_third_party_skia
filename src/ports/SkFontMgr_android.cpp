@@ -49,9 +49,11 @@ public:
         , fIndex(index)
         , fFamilyName(familyName) { }
 
-    const SkString& name() const { return fFamilyName; }
-
 protected:
+    virtual void onGetFamilyName(SkString* familyName) const SK_OVERRIDE {
+        *familyName = fFamilyName;
+    }
+
     int fIndex;
     SkString fFamilyName;
 
@@ -79,6 +81,7 @@ public:
         SkASSERT(serialize);
         desc->setFamilyName(fFamilyName.c_str());
         desc->setFontFileName(fPathName.c_str());
+        desc->setFontIndex(fIndex);
         *serialize = false;
     }
     virtual SkStream* onOpenStream(int* ttcIndex) const SK_OVERRIDE {
@@ -422,7 +425,7 @@ protected:
                                                  ? SkFontStyle::kItalic_Slant
                                                  : SkFontStyle::kUpright_Slant);
 
-        if (NULL != familyName) {
+        if (familyName) {
             // On Android, we must return NULL when we can't find the requested
             // named typeface so that the system/app can provide their own recovery
             // mechanism. On other platforms we'd provide a typeface from the

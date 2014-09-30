@@ -15,8 +15,6 @@
       'dependencies': [
         'bbh_shootout',
         'bench_pictures',
-        'bench_record',
-        'bench_playback',
         'dump_record',
         'filter',
         'gpuveto',
@@ -167,6 +165,7 @@
         '../tools/skpdiff/SkImageDiffer.cpp',
         '../tools/skpdiff/SkPMetric.cpp',
         '../tools/skpdiff/skpdiff_util.cpp',
+        '../src/utils/SkTaskGroup.cpp',
       ],
       'include_dirs': [
         '../src/core/', # needed for SkTLList.h
@@ -409,40 +408,6 @@
         ['skia_android_framework == 1', {
           'libraries': [ '-lskia' ],
         }],
-      ],
-    },
-    {
-      'target_name': 'bench_record',
-      'type': 'executable',
-      'sources': [
-        '../tools/bench_record.cpp',
-        '../tools/LazyDecodeBitmap.cpp',
-      ],
-      'include_dirs': [
-        '../src/core/',
-        '../src/images',
-        '../src/lazy',
-      ],
-      'dependencies': [
-        'timer',
-        'flags.gyp:flags',
-        'skia_lib.gyp:skia_lib',
-      ],
-    },
-    {
-      'target_name': 'bench_playback',
-      'type': 'executable',
-      'sources': [
-        '../tools/bench_playback.cpp',
-      ],
-      'include_dirs': [
-        '../src/core/',
-        '../src/images',
-      ],
-      'dependencies': [
-        'timer',
-        'flags.gyp:flags',
-        'skia_lib.gyp:skia_lib',
       ],
     },
     {

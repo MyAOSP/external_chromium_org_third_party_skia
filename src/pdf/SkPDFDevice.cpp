@@ -1261,8 +1261,8 @@ void SkPDFDevice::onDetachFromCanvas() {
     fClipStack = NULL;
 }
 
-SkSurface* SkPDFDevice::newSurface(const SkImageInfo& info) {
-    return SkSurface::NewRaster(info);
+SkSurface* SkPDFDevice::newSurface(const SkImageInfo& info, const SkSurfaceProps& props) {
+    return SkSurface::NewRaster(info, &props);
 }
 
 ContentEntry* SkPDFDevice::getLastContentEntry() {
@@ -2120,7 +2120,7 @@ void SkPDFDevice::internalDrawBitmap(const SkMatrix& origMatrix,
 
         const int w = SkScalarCeilToInt(physicalPerspectiveOutline.getBounds().width());
         const int h = SkScalarCeilToInt(physicalPerspectiveOutline.getBounds().height());
-        if (!perspectiveBitmap.allocPixels(SkImageInfo::MakeN32Premul(w, h))) {
+        if (!perspectiveBitmap.tryAllocN32Pixels(w, h)) {
             return;
         }
         perspectiveBitmap.eraseColor(SK_ColorTRANSPARENT);
@@ -2182,8 +2182,8 @@ void SkPDFDevice::internalDrawBitmap(const SkMatrix& origMatrix,
         return;
     }
 
-    SkAutoTUnref<SkPDFImage> image(
-        SkPDFImage::CreateImage(*bitmap, subset, fEncoder));
+    SkAutoTUnref<SkPDFObject> image(
+            SkPDFCreateImageObject(*bitmap, subset, fEncoder));
     if (!image) {
         return;
     }
